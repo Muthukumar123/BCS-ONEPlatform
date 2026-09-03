@@ -10,12 +10,12 @@ export function getAzureOpenAIClient(): OpenAI | undefined {
   if (!client) {
     const tokenProvider = getBearerTokenProvider(
       new DefaultAzureCredential(),
-      'https://cognitiveservices.azure.com/.default'
+      'https://ai.azure.com/.default'
     );
 
     client = new OpenAI({
-      baseURL: `${endpoint.replace(/\/$/, '')}/openai/v1/`,
-      apiKey: tokenProvider as unknown as string
+      baseURL: `${endpoint.replace(/\/+$/, '')}/openai/v1/`,
+      apiKey: tokenProvider
     });
   }
 
