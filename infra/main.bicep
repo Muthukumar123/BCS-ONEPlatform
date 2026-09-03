@@ -55,6 +55,7 @@ module registry './modules/registry.bicep' = {
     location: location
     prefix: prefix
     uniqueSuffix: uniqueSuffix
+    workloadPrincipalId: identity.outputs.principalId
     tags: tags
   }
 }
