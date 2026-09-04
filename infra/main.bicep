@@ -55,7 +55,6 @@ module registry './modules/registry.bicep' = {
     location: location
     prefix: prefix
     uniqueSuffix: uniqueSuffix
-    workloadPrincipalId: identity.outputs.principalId
     tags: tags
   }
 }
@@ -67,7 +66,6 @@ module keyVault './modules/keyvault.bicep' = {
     prefix: prefix
     uniqueSuffix: uniqueSuffix
     tenantId: tenant().tenantId
-    workloadPrincipalId: identity.outputs.principalId
     tags: tags
   }
 }
@@ -105,24 +103,29 @@ module database './modules/postgres.bicep' = {
 }
 
 module containerApps './modules/container-apps.bicep' = {
-  name: 'containerApps'
+  name: 'containerAppsEnvironment'
   params: {
     location: location
     prefix: prefix
     subnetId: network.outputs.containerAppsSubnetId
     logAnalyticsCustomerId: observability.outputs.logAnalyticsCustomerId
     logAnalyticsSharedKey: observability.outputs.logAnalyticsSharedKey
-    managedIdentityId: identity.outputs.resourceId
-    acrLoginServer: registry.outputs.loginServer
     tags: tags
   }
 }
 
 output containerAppsEnvironmentId string = containerApps.outputs.environmentId
+output containerAppsEnvironmentName string = containerApps.outputs.environmentName
+output containerAppsDefaultDomain string = containerApps.outputs.defaultDomain
+output containerRegistryName string = registry.outputs.name
 output containerRegistry string = registry.outputs.loginServer
+output containerRegistryId string = registry.outputs.id
 output keyVaultName string = keyVault.outputs.name
+output keyVaultId string = keyVault.outputs.id
 output postgresFqdn string = database.outputs.fqdn
 output serviceBusNamespace string = messaging.outputs.namespaceName
 output storageAccount string = storage.outputs.name
 output applicationInsightsConnectionString string = observability.outputs.applicationInsightsConnectionString
 output workloadIdentityClientId string = identity.outputs.clientId
+output workloadIdentityPrincipalId string = identity.outputs.principalId
+output workloadIdentityResourceId string = identity.outputs.resourceId

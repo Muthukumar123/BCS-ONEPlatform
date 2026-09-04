@@ -1,0 +1,115 @@
+name: Release live dev pilot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ENVIRONMENT: dev
+  FOUNDATION_DEPLOYMENT: bcs-one-foundation-dev
+  APPS_DEPLOYMENT: bcs-one-apps-dev
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate required configuration
+        env:
+          OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}
+          BCS_TENANT_ID: ${{ vars.BCS_ENTRA_TENANT_ID }}
+          BCS_AUDIENCE: ${{ vars.BCS_ENTRA_API_AUDIENCE }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          test -n "$OPENAI_ENDPOINT" || { echo 'AZURE_OPENAI_ENDPOINT is required'; exit 1; }
+          test -n "$OPENAI_DEPLOYMENT" || { echo 'AZURE_OPENAI_MODEL_DEPLOYMENT is required'; exit 1; }
+          test -n "$BCS_TENANT_ID" || { echo 'BCS_ENTRA_TENANT_ID is required'; exit 1; }
+          test -n "$BCS_AUDIENCE" || { echo 'BCS_ENTRA_API_AUDIENCE is required'; exit 1; }
+          test -n "$POSTGRES_ADMIN_PASSWORD" || { echo 'POSTGRES_ADMIN_PASSWORD secret is required'; exit 1; }
+
+      - name: Deploy Azure foundation
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          az deployment group create \
+            --name "$FOUNDATION_DEPLOYMENT" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/environments/dev.bicepparam \
+            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
+
+      - name: Read foundation outputs
+        id: foundation
+        run: |
+          outputs=$(az deployment group show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$FOUNDATION_DEPLOYMENT" \
+            --query properties.outputs -o json)
+          echo "acr_name=$(jq -r '.containerRegistryName.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "acr_login=$(jq -r '.containerRegistry.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "acr_id=$(jq -r '.containerRegistryId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "cae_id=$(jq -r '.containerAppsEnvironmentId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "identity_id=$(jq -r '.workloadIdentityResourceId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "identity_client_id=$(jq -r '.workloadIdentityClientId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "identity_principal_id=$(jq -r '.workloadIdentityPrincipalId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify privileged RBAC bootstrap
+        run: |
+          count=$(az role assignment list \
+            --assignee "${{ steps.foundation.outputs.identity_principal_id }}" \
+            --scope "${{ steps.foundation.outputs.acr_id }}" \
+            --query "[?roleDefinitionName=='AcrPull'] | length(@)" -o tsv)
+          if [[ "$count" == "0" ]]; then
+            echo 'AcrPull is missing. Run scripts/bootstrap-rbac.sh once with an Azure RBAC administrator.'
+            exit 1
+          fi
+
+      - name: Build and push immutable images
+        run: |
+          tag="${GITHUB_SHA}"
+          acr="${{ steps.foundation.outputs.acr_name }}"
+          az acr build --registry "$acr" --image "bcs-one/gateway:$tag" --file apps/gateway/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/orchestrator:$tag" --file services/orchestrator/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/mcp-server:$tag" --file services/mcp-server/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/reference-payroll:$tag" --file services/adapters/reference-payroll/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/policy:$tag" --file policy/Dockerfile .
+
+      - name: Deploy application tier
+        run: |
+          az deployment group create \
+            --name "$APPS_DEPLOYMENT" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/apps.bicep \
+            --parameters \
+              environment="$ENVIRONMENT" \
+              imageTag="$GITHUB_SHA" \
+              containerAppsEnvironmentId="${{ steps.foundation.outputs.cae_id }}" \
+              acrLoginServer="${{ steps.foundation.outputs.acr_login }}" \
+              managedIdentityId="${{ steps.foundation.outputs.identity_id }}" \
+              managedIdentityClientId="${{ steps.foundation.outputs.identity_client_id }}" \
+              azureOpenAIEndpoint="${{ vars.AZURE_OPENAI_ENDPOINT }}" \
+              azureOpenAIModelDeployment="${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}" \
+              entraTenantId="${{ vars.BCS_ENTRA_TENANT_ID }}" \
+              entraApiAudience="${{ vars.BCS_ENTRA_API_AUDIENCE }}"
+
+      - name: Publish live endpoint
+        run: |
+          url=$(az deployment group show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$APPS_DEPLOYMENT" \
+            --query 'properties.outputs.gatewayUrl.value' -o tsv)
+          echo "### BCS ONE live dev pilot" >> "$GITHUB_STEP_SUMMARY"
+          echo "Gateway: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image tag: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
