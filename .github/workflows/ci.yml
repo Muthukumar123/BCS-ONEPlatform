@@ -19,7 +19,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
@@ -28,8 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-bicep@v2
-      - run: bicep build infra/main.bicep --stdout > /dev/null
+      - name: Install Bicep CLI
+        run: az bicep install
+      - name: Compile foundation Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: Compile application Bicep
+        run: az bicep build --file infra/apps.bicep --stdout > /dev/null
 
   policy:
     runs-on: ubuntu-latest
