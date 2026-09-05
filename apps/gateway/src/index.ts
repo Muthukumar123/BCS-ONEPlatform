@@ -55,32 +55,27 @@ async function proxyGet(req: express.Request, res: express.Response, upstreamPat
   }
 }
 
-app.get('/v1/mcp/tools', (req, res) => void proxyGet(req, res, '/v1/mcp/tools'));
-app.get('/v1/runs', (req, res) => void proxyGet(req, res, '/v1/runs'));
-app.get('/v1/runs/:runId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}`));
-app.get('/v1/evaluations', (req, res) => void proxyGet(req, res, '/v1/evaluations'));
-
-app.post('/v1/employee-summary', async (req, res) => {
+async function proxyPost(req: express.Request, res: express.Response, upstreamPath: string, timeoutMs = 45_000) {
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
   const auth = await authenticate(req);
   if (!auth.ok) return res.status(auth.status).json({ code: auth.code, message: auth.message, requestId });
   const purpose = purposeForRoles(auth.context.roles);
   try {
-    const upstream = await fetch(`${orchestratorUrl}/v1/employee-summary`, {
+    const upstream = await fetch(`${orchestratorUrl}${upstreamPath}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...trustedHeaders(auth.context, purpose, requestId) },
       body: JSON.stringify(req.body),
-      signal: AbortSignal.timeout(30_000)
+      signal: AbortSignal.timeout(timeoutMs)
     });
     const payload = await upstream.text();
     return res.status(upstream.status).type(upstream.headers.get('content-type') ?? 'application/json').send(payload);
   } catch (error) {
-    log.error({ error, requestId }, 'orchestrator request failed');
+    log.error({ error, requestId, upstreamPath }, 'orchestrator POST proxy failed');
     return res.status(503).json({ code: 'ORCHESTRATOR_UNAVAILABLE', requestId });
   }
-});
+}
 
-app.post('/v1/employee-summary/stream', async (req, res) => {
+async function proxyStream(req: express.Request, res: express.Response, upstreamPath: string) {
   const startedAt = Date.now();
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
   const authStarted = Date.now();
@@ -95,22 +90,39 @@ app.post('/v1/employee-summary/stream', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
+  const threadId = typeof req.body?.threadId === 'string' ? req.body.threadId : requestId;
   const send = (event: Record<string, unknown>) => {
     if (!res.writableEnded) res.write(`event: workflow\ndata: ${JSON.stringify(event)}\n\n`);
   };
-  send({ requestId, runId: requestId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'identity', event: 'entra.token.validated', status: 'completed', type: 'event', durationMs: Date.now() - authStarted, message: `roles=${auth.context.roles.join(',')}` });
-  send({ requestId, runId: requestId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'gateway', event: 'gateway.context.created', status: 'completed', type: 'event', durationMs: Date.now() - startedAt, message: `purpose=${purpose}` });
+
+  send({
+    requestId, runId: requestId, threadId, timestamp: new Date().toISOString(), elapsedMs: 0,
+    stage: 'gateway', event: 'request.accepted', status: 'completed', type: 'event',
+    nodeId: 'request', lane: 'control', message: upstreamPath
+  });
+  send({
+    requestId, runId: requestId, threadId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+    stage: 'identity', event: 'entra.token.validated', status: 'completed', type: 'event',
+    durationMs: Date.now() - authStarted, nodeId: 'identity', parentNodeId: 'request', lane: 'governance',
+    message: `roles=${auth.context.roles.join(',')}`
+  });
+  send({
+    requestId, runId: requestId, threadId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+    stage: 'gateway', event: 'gateway.context.created', status: 'completed', type: 'event',
+    nodeId: 'gateway', parentNodeId: 'identity', lane: 'control',
+    durationMs: Date.now() - startedAt, message: `purpose=${purpose}`
+  });
 
   try {
-    const upstream = await fetch(`${orchestratorUrl}/v1/employee-summary/stream`, {
+    const upstream = await fetch(`${orchestratorUrl}${upstreamPath}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...trustedHeaders(auth.context, purpose, requestId) },
       body: JSON.stringify(req.body),
-      signal: AbortSignal.timeout(30_000)
+      signal: AbortSignal.timeout(45_000)
     });
     if (!upstream.ok || !upstream.body) {
       const detail = await upstream.text();
-      send({ requestId, runId: requestId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'gateway', event: 'upstream.failed', status: 'failed', type: 'error', message: detail || `HTTP ${upstream.status}` });
+      send({ requestId, runId: requestId, threadId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'gateway', event: 'upstream.failed', status: 'failed', type: 'error', nodeId: 'gateway', parentNodeId: 'identity', lane: 'control', message: detail || `HTTP ${upstream.status}` });
       return res.end();
     }
     const reader = upstream.body.getReader();
@@ -121,10 +133,23 @@ app.post('/v1/employee-summary/stream', async (req, res) => {
     }
     return res.end();
   } catch (error) {
-    log.error({ error, requestId }, 'orchestrator stream failed');
-    send({ requestId, runId: requestId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'gateway', event: 'stream.failed', status: 'failed', type: 'error', message: 'Orchestrator unavailable' });
+    log.error({ error, requestId, upstreamPath }, 'orchestrator stream failed');
+    send({ requestId, runId: requestId, threadId, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt, stage: 'gateway', event: 'stream.failed', status: 'failed', type: 'error', nodeId: 'gateway', parentNodeId: 'identity', lane: 'control', message: 'Orchestrator unavailable' });
     return res.end();
   }
-});
+}
+
+app.get('/v1/mcp/tools', (req, res) => void proxyGet(req, res, '/v1/mcp/tools'));
+app.get('/v1/scenarios', (req, res) => void proxyGet(req, res, '/v1/scenarios'));
+app.get('/v1/runs', (req, res) => void proxyGet(req, res, '/v1/runs'));
+app.get('/v1/runs/:runId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}`));
+app.get('/v1/runs/:runId/artifacts/:artifactId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}/artifacts/${encodeURIComponent(req.params.artifactId)}`));
+app.get('/v1/evaluations', (req, res) => void proxyGet(req, res, '/v1/evaluations'));
+
+app.post('/v1/scenarios/:scenarioId', (req, res) => void proxyPost(req, res, `/v1/scenarios/${encodeURIComponent(req.params.scenarioId)}`));
+app.post('/v1/scenarios/:scenarioId/stream', (req, res) => void proxyStream(req, res, `/v1/scenarios/${encodeURIComponent(req.params.scenarioId)}/stream`));
+
+app.post('/v1/employee-summary', (req, res) => void proxyPost(req, res, '/v1/employee-summary', 30_000));
+app.post('/v1/employee-summary/stream', (req, res) => void proxyStream(req, res, '/v1/employee-summary/stream'));
 
 app.listen(port, () => log.info({ port }, 'gateway listening'));
