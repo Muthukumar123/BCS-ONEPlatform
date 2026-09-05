@@ -46,9 +46,7 @@ jobs:
           az deployment group create \
             --name "$FOUNDATION_DEPLOYMENT" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --template-file infra/main.bicep \
-            --parameters infra/environments/dev.bicepparam \
-            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
+            --parameters infra/environments/dev.bicepparam
 
       - name: Read foundation outputs
         id: foundation
