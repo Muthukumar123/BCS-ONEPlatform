@@ -42,6 +42,7 @@ jobs:
       - name: Deploy Azure foundation
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
         run: |
           az deployment group create \
             --name "$FOUNDATION_DEPLOYMENT" \
