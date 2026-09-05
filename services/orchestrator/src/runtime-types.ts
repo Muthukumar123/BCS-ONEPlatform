@@ -20,8 +20,19 @@ export type WorkflowEvent = {
   agent?: string;
   message?: string;
   tool?: string;
+  capability?: string;
+  product?: string;
+  sourceSystem?: string;
   durationMs?: number;
   artifactId?: string;
+  nodeId?: string;
+  parentNodeId?: string;
+  lane?: 'control' | 'governance' | 'mcp' | 'data' | 'ai';
+  callId?: string;
+  mcpCallIndex?: number;
+  mcpCallTotal?: number;
+  inputKeys?: string[];
+  outputShape?: string[];
   payload?: unknown;
 };
 
