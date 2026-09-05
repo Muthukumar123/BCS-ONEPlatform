@@ -15,6 +15,7 @@ param azureOpenAIEndpoint string
 param azureOpenAIModelDeployment string
 param entraTenantId string
 param entraApiAudience string
+param entraConsoleClientId string
 
 param tags object = {
   system: 'bcs-one'
@@ -38,9 +39,12 @@ module apps './modules/apps.bicep' = {
     azureOpenAIModelDeployment: azureOpenAIModelDeployment
     entraTenantId: entraTenantId
     entraApiAudience: entraApiAudience
+    entraConsoleClientId: entraConsoleClientId
     tags: tags
   }
 }
 
 output gatewayFqdn string = apps.outputs.gatewayFqdn
 output gatewayUrl string = 'https://${apps.outputs.gatewayFqdn}'
+output consoleFqdn string = apps.outputs.consoleFqdn
+output consoleUrl string = 'https://${apps.outputs.consoleFqdn}'
