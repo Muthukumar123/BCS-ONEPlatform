@@ -2,7 +2,10 @@ targetScope = 'resourceGroup'
 
 @allowed(['dev', 'test', 'prod'])
 param environment string
-param location string = resourceGroup().location
+
+@description('Azure region for the Container Apps application tier. Must match the managed environment region.')
+param location string
+
 param imageTag string
 param containerAppsEnvironmentId string
 param acrLoginServer string
