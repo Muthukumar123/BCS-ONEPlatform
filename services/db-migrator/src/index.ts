@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
@@ -50,11 +50,19 @@ async function main() {
     await client.query(passwordDdl.rows[0].ddl);
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const migrationPath = path.resolve(__dirname, '../migrations/001_state_runtime.sql');
-    const migrationSql = await readFile(migrationPath, 'utf8');
-    await client.query(migrationSql);
+    const migrationsDir = path.resolve(__dirname, '../migrations');
+    const migrationFiles = (await readdir(migrationsDir))
+      .filter(name => /^\d+_.+\.sql$/.test(name))
+      .sort((a, b) => a.localeCompare(b));
 
-    const result = await client.query(`select version, applied_at from bcs_state.schema_migrations order by applied_at`);
+    if (migrationFiles.length === 0) throw new Error('No database migrations found');
+    for (const migrationFile of migrationFiles) {
+      const migrationSql = await readFile(path.join(migrationsDir, migrationFile), 'utf8');
+      console.log(`Applying ${migrationFile}`);
+      await client.query(migrationSql);
+    }
+
+    const result = await client.query(`select version, applied_at from bcs_state.schema_migrations order by applied_at, version`);
     console.log(JSON.stringify({ status: 'ok', migrations: result.rows }, null, 2));
   } finally {
     await client.end();
