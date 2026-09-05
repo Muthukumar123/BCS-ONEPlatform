@@ -59,6 +59,7 @@ export type RunRecord = {
   tenantId: string;
   userId: string;
   workflowType: string;
+  scenarioId?: string;
   status: 'running' | 'completed' | 'failed' | 'waiting';
   currentNode?: string;
   purpose: string;
