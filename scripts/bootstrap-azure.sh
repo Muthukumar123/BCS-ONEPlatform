@@ -3,7 +3,9 @@ set -euo pipefail
 
 : "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
 : "${GITHUB_ORG:=Muthukumar123}"
+: "${GITHUB_OWNER_ID:=3875126}"
 : "${GITHUB_REPO:=BCS-ONEPlatform}"
+: "${GITHUB_REPO_ID:=1356417496}"
 : "${GITHUB_ENVIRONMENT:=dev}"
 : "${LOCATION:=westeurope}"
 : "${RESOURCE_GROUP:=rg-bcs-one-dev}"
@@ -23,17 +25,22 @@ if [[ -z "$SP_OBJECT_ID" ]]; then
   SP_OBJECT_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
 fi
 
+# GitHub repositories created after 2026-07-15 use immutable OIDC subjects
+# containing the repository owner ID and repository ID.
+OIDC_SUBJECT="repo:${GITHUB_ORG}@${GITHUB_OWNER_ID}/${GITHUB_REPO}@${GITHUB_REPO_ID}:environment:${GITHUB_ENVIRONMENT}"
+FIC_NAME="github-${GITHUB_ENVIRONMENT}-immutable"
+
 cat > /tmp/bcs-one-fic.json <<JSON
 {
-  "name": "github-${GITHUB_ENVIRONMENT}",
+  "name": "${FIC_NAME}",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}",
-  "description": "GitHub Actions OIDC for BCS ONE ${GITHUB_ENVIRONMENT} environment",
+  "subject": "${OIDC_SUBJECT}",
+  "description": "GitHub Actions immutable OIDC for BCS ONE ${GITHUB_ENVIRONMENT} environment",
   "audiences": ["api://AzureADTokenExchange"]
 }
 JSON
 
-EXISTING_FIC=$(az ad app federated-credential list --id "$OBJECT_ID" --query "[?name=='github-${GITHUB_ENVIRONMENT}'].name | [0]" -o tsv)
+EXISTING_FIC=$(az ad app federated-credential list --id "$OBJECT_ID" --query "[?name=='${FIC_NAME}'].name | [0]" -o tsv)
 if [[ -z "$EXISTING_FIC" ]]; then
   az ad app federated-credential create --id "$OBJECT_ID" --parameters /tmp/bcs-one-fic.json >/dev/null
 fi
@@ -54,5 +61,5 @@ echo "AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID"
 echo "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
 echo "AZURE_LOCATION=$LOCATION"
 echo
-echo "GitHub OIDC subject: repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}"
+echo "GitHub OIDC subject: ${OIDC_SUBJECT}"
 echo "Add POSTGRES_ADMIN_PASSWORD as a GitHub Actions secret."
