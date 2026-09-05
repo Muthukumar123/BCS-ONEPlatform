@@ -46,6 +46,7 @@ function rowToRun(row: Record<string, any>): RunRecord {
     tenantId: row.tenant_id,
     userId: row.user_id,
     workflowType: row.workflow_type,
+    scenarioId: row.scenario_id ?? undefined,
     status: row.status,
     currentNode: row.current_node ?? undefined,
     purpose: row.purpose,
@@ -71,9 +72,7 @@ export class RuntimePersistence {
 
   static async create(): Promise<RuntimePersistence> {
     const backend = (process.env.STATE_BACKEND ?? 'memory').toLowerCase();
-    if (backend !== 'postgres') {
-      return new RuntimePersistence('memory', new MemorySaver());
-    }
+    if (backend !== 'postgres') return new RuntimePersistence('memory', new MemorySaver());
 
     const connectionString = postgresConnectionString();
     const pool = new Pool({
@@ -111,16 +110,16 @@ export class RuntimePersistence {
     }
   }
 
-  async createRun(context: SecurityContext, runId: string, threadId: string, workflowType: string): Promise<void> {
+  async createRun(context: SecurityContext, runId: string, threadId: string, workflowType: string, scenarioId?: string): Promise<void> {
     if (!this.pool) return;
     await this.withTenant(context.tenantId, async client => {
       await client.query(
         `insert into bcs_state.agent_runs
-          (tenant_id, run_id, thread_id, request_id, user_id, workflow_type, status, current_node, purpose)
-         values ($1,$2,$3,$4,$5,$6,'running','start',$7)
+          (tenant_id, run_id, thread_id, request_id, user_id, workflow_type, scenario_id, status, current_node, purpose)
+         values ($1,$2,$3,$4,$5,$6,$7,'running','start',$8)
          on conflict (tenant_id, run_id) do update
-         set updated_at = now()`,
-        [context.tenantId, runId, threadId, context.requestId, context.userId, workflowType, context.purpose]
+         set updated_at = now(), scenario_id = coalesce(excluded.scenario_id, bcs_state.agent_runs.scenario_id)`,
+        [context.tenantId, runId, threadId, context.requestId, context.userId, workflowType, scenarioId ?? null, context.purpose]
       );
     });
   }
@@ -142,15 +141,7 @@ export class RuntimePersistence {
              completed_at = case when $3 in ('completed','failed') then coalesce(completed_at, now()) else completed_at end,
              updated_at = now()
          where tenant_id = $1 and run_id = $2`,
-        [
-          tenantId,
-          runId,
-          update.status ?? null,
-          update.currentNode ?? null,
-          update.finalArtifactId ?? null,
-          update.explanationArtifactId ?? null,
-          update.errorCode ?? null
-        ]
+        [tenantId, runId, update.status ?? null, update.currentNode ?? null, update.finalArtifactId ?? null, update.explanationArtifactId ?? null, update.errorCode ?? null]
       );
     });
   }
@@ -161,23 +152,15 @@ export class RuntimePersistence {
       await client.query(
         `insert into bcs_state.execution_events
           (tenant_id, run_id, request_id, sequence, event_time, stage, event_name, status, agent_name,
-           tool_name, duration_ms, artifact_id, safe_message)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           tool_name, duration_ms, artifact_id, safe_message, node_id, parent_node_id, lane, product_name,
+           source_system, call_id, mcp_call_index, mcp_call_total, input_keys, output_shape)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
          on conflict (tenant_id, run_id, sequence) do nothing`,
         [
-          tenantId,
-          event.runId,
-          event.requestId,
-          event.sequence,
-          event.timestamp,
-          event.stage,
-          event.event,
-          event.status,
-          event.agent ?? null,
-          event.tool ?? null,
-          event.durationMs ?? null,
-          event.artifactId ?? null,
-          event.message ?? null
+          tenantId, event.runId, event.requestId, event.sequence, event.timestamp, event.stage, event.event, event.status,
+          event.agent ?? null, event.tool ?? null, event.durationMs ?? null, event.artifactId ?? null, event.message ?? null,
+          event.nodeId ?? null, event.parentNodeId ?? null, event.lane ?? null, event.product ?? null, event.sourceSystem ?? null,
+          event.callId ?? null, event.mcpCallIndex ?? null, event.mcpCallTotal ?? null, event.inputKeys ?? null, event.outputShape ?? null
         ]
       );
     });
@@ -189,22 +172,10 @@ export class RuntimePersistence {
     await this.withTenant(input.tenantId, async client => {
       await client.query(
         `insert into bcs_state.agent_artifacts
-          (tenant_id, artifact_id, run_id, thread_id, producer_agent, artifact_type, classification,
-           source_system, capability, payload)
+          (tenant_id, artifact_id, run_id, thread_id, producer_agent, artifact_type, classification, source_system, capability, payload)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
          on conflict (tenant_id, artifact_id) do nothing`,
-        [
-          input.tenantId,
-          artifactId,
-          input.runId,
-          input.threadId,
-          input.producerAgent,
-          input.artifactType,
-          input.classification,
-          input.sourceSystem ?? null,
-          input.capability ?? null,
-          JSON.stringify(input.payload)
-        ]
+        [input.tenantId, artifactId, input.runId, input.threadId, input.producerAgent, input.artifactType, input.classification, input.sourceSystem ?? null, input.capability ?? null, JSON.stringify(input.payload)]
       );
     });
     return artifactId;
@@ -216,9 +187,38 @@ export class RuntimePersistence {
       const result = await client.query(
         `select artifact_id, run_id, thread_id, tenant_id, producer_agent, artifact_type, classification,
                 source_system, capability, payload, created_at
-         from bcs_state.agent_artifacts
-         where tenant_id = $1 and artifact_id = $2`,
+         from bcs_state.agent_artifacts where tenant_id = $1 and artifact_id = $2`,
         [tenantId, artifactId]
+      );
+      const row = result.rows[0];
+      if (!row) return undefined;
+      return {
+        artifactId: row.artifact_id,
+        runId: row.run_id,
+        threadId: row.thread_id,
+        tenantId: row.tenant_id,
+        producerAgent: row.producer_agent,
+        artifactType: row.artifact_type,
+        classification: row.classification,
+        sourceSystem: row.source_system ?? undefined,
+        capability: row.capability ?? undefined,
+        payload: row.payload,
+        createdAt: new Date(row.created_at).toISOString()
+      };
+    });
+  }
+
+  async getArtifactForContext(context: SecurityContext, runId: string, artifactId: string): Promise<AgentArtifact | undefined> {
+    if (!this.pool) return undefined;
+    return this.withTenant(context.tenantId, async client => {
+      const privileged = context.roles.includes('hr') || context.roles.includes('payroll');
+      const result = await client.query(
+        `select a.artifact_id, a.run_id, a.thread_id, a.tenant_id, a.producer_agent, a.artifact_type, a.classification,
+                a.source_system, a.capability, a.payload, a.created_at
+         from bcs_state.agent_artifacts a
+         join bcs_state.agent_runs r on r.tenant_id = a.tenant_id and r.run_id = a.run_id
+         where a.tenant_id = $1 and a.run_id = $2 and a.artifact_id = $3 and ($4::boolean = true or r.user_id = $5)`,
+        [context.tenantId, runId, artifactId, privileged, context.userId]
       );
       const row = result.rows[0];
       if (!row) return undefined;
@@ -241,10 +241,7 @@ export class RuntimePersistence {
   async getRun(tenantId: string, runId: string): Promise<RunRecord | undefined> {
     if (!this.pool) return undefined;
     return this.withTenant(tenantId, async client => {
-      const result = await client.query(
-        `select * from bcs_state.agent_runs where tenant_id = $1 and run_id = $2`,
-        [tenantId, runId]
-      );
+      const result = await client.query(`select * from bcs_state.agent_runs where tenant_id = $1 and run_id = $2`, [tenantId, runId]);
       return result.rows[0] ? rowToRun(result.rows[0]) : undefined;
     });
   }
@@ -256,8 +253,7 @@ export class RuntimePersistence {
       const result = await client.query(
         `select * from bcs_state.agent_runs
          where tenant_id = $1 and ($2::boolean = true or user_id = $3)
-         order by started_at desc
-         limit $4`,
+         order by started_at desc limit $4`,
         [context.tenantId, privileged, context.userId, Math.min(Math.max(limit, 1), 200)]
       );
       return result.rows.map(rowToRun);
@@ -269,19 +265,18 @@ export class RuntimePersistence {
     return this.withTenant(context.tenantId, async client => {
       const privileged = context.roles.includes('hr') || context.roles.includes('payroll');
       const runResult = await client.query(
-        `select * from bcs_state.agent_runs
-         where tenant_id = $1 and run_id = $2 and ($3::boolean = true or user_id = $4)`,
+        `select * from bcs_state.agent_runs where tenant_id = $1 and run_id = $2 and ($3::boolean = true or user_id = $4)`,
         [context.tenantId, runId, privileged, context.userId]
       );
       if (!runResult.rows[0]) return undefined;
       const eventsResult = await client.query(
-        `select sequence, event_time, stage, event_name, status, agent_name, tool_name, duration_ms, artifact_id, safe_message
+        `select sequence, event_time, stage, event_name, status, agent_name, tool_name, duration_ms, artifact_id, safe_message,
+                node_id, parent_node_id, lane, product_name, source_system, call_id, mcp_call_index, mcp_call_total, input_keys, output_shape
          from bcs_state.execution_events where tenant_id = $1 and run_id = $2 order by sequence`,
         [context.tenantId, runId]
       );
       const artifactsResult = await client.query(
-        `select artifact_id, run_id, thread_id, tenant_id, producer_agent, artifact_type, classification,
-                source_system, capability, created_at
+        `select artifact_id, run_id, thread_id, tenant_id, producer_agent, artifact_type, classification, source_system, capability, created_at
          from bcs_state.agent_artifacts where tenant_id = $1 and run_id = $2 order by created_at`,
         [context.tenantId, runId]
       );
@@ -297,7 +292,17 @@ export class RuntimePersistence {
           tool: row.tool_name,
           durationMs: row.duration_ms,
           artifactId: row.artifact_id,
-          message: row.safe_message
+          message: row.safe_message,
+          nodeId: row.node_id,
+          parentNodeId: row.parent_node_id,
+          lane: row.lane,
+          product: row.product_name,
+          sourceSystem: row.source_system,
+          callId: row.call_id,
+          mcpCallIndex: row.mcp_call_index,
+          mcpCallTotal: row.mcp_call_total,
+          inputKeys: row.input_keys,
+          outputShape: row.output_shape
         })),
         artifacts: artifactsResult.rows.map(row => ({
           artifactId: row.artifact_id,

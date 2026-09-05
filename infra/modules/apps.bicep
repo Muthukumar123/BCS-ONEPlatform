@@ -59,6 +59,38 @@ resource referencePayroll 'Microsoft.App/containerApps@2026-01-01' = {
   }
 }
 
+resource referencePortfolio 'Microsoft.App/containerApps@2026-01-01' = {
+  name: '${prefix}-reference-portfolio'
+  location: location
+  tags: union(tags, { workload: 'federated-reference-adapter' })
+  identity: identityConfig
+  properties: {
+    managedEnvironmentId: environmentId
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: { external: false, targetPort: 3004, transport: 'auto' }
+      registries: registry
+    }
+    template: {
+      containers: [{
+        name: 'reference-portfolio'
+        image: '${acrLoginServer}/bcs-one/reference-portfolio:${imageTag}'
+        env: [{ name: 'PORT', value: '3004' }]
+        probes: [{
+          type: 'Liveness'
+          httpGet: { path: '/healthz', port: 3004, scheme: 'HTTP' }
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        }]
+        resources: { cpu: json('0.5'), memory: '1Gi' }
+      }]
+      scale: { minReplicas: 1, maxReplicas: 5 }
+    }
+  }
+}
+
 resource policy 'Microsoft.App/containerApps@2026-01-01' = {
   name: '${prefix}-policy'
   location: location
@@ -72,11 +104,7 @@ resource policy 'Microsoft.App/containerApps@2026-01-01' = {
       registries: registry
     }
     template: {
-      containers: [{
-        name: 'policy'
-        image: '${acrLoginServer}/bcs-one/policy:${imageTag}'
-        resources: { cpu: json('0.5'), memory: '1Gi' }
-      }]
+      containers: [{ name: 'policy', image: '${acrLoginServer}/bcs-one/policy:${imageTag}', resources: { cpu: json('0.5'), memory: '1Gi' } }]
       scale: { minReplicas: 1, maxReplicas: 3 }
     }
   }
@@ -101,6 +129,7 @@ resource mcp 'Microsoft.App/containerApps@2026-01-01' = {
         env: [
           { name: 'PORT', value: '3002' }
           { name: 'REFERENCE_PAYROLL_ADAPTER_URL', value: 'https://${referencePayroll.properties.configuration.ingress.fqdn}' }
+          { name: 'REFERENCE_PORTFOLIO_ADAPTER_URL', value: 'https://${referencePortfolio.properties.configuration.ingress.fqdn}' }
         ]
         probes: [{
           type: 'Liveness'
@@ -110,9 +139,9 @@ resource mcp 'Microsoft.App/containerApps@2026-01-01' = {
           timeoutSeconds: 5
           failureThreshold: 3
         }]
-        resources: { cpu: json('0.5'), memory: '1Gi' }
+        resources: { cpu: json('0.75'), memory: '1Gi' }
       }]
-      scale: { minReplicas: 1, maxReplicas: 5 }
+      scale: { minReplicas: 1, maxReplicas: 7 }
     }
   }
 }
@@ -160,7 +189,7 @@ resource orchestrator 'Microsoft.App/containerApps@2026-01-01' = {
         }]
         resources: { cpu: json('1.0'), memory: '2Gi' }
       }]
-      scale: { minReplicas: 1, maxReplicas: 5 }
+      scale: { minReplicas: 1, maxReplicas: 7 }
     }
   }
 }
@@ -200,7 +229,7 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
         }]
         resources: { cpu: json('0.5'), memory: '1Gi' }
       }]
-      scale: { minReplicas: 1, maxReplicas: 5 }
+      scale: { minReplicas: 1, maxReplicas: 7 }
     }
   }
 }
@@ -268,7 +297,7 @@ resource evalRunner 'Microsoft.App/jobs@2026-01-01' = {
           { name: 'ORCHESTRATOR_URL', value: 'https://${orchestrator.properties.configuration.ingress.fqdn}' }
           { name: 'EVAL_TENANT_ID', value: entraTenantId }
           { name: 'RELEASE_REF', value: imageTag }
-          { name: 'EVAL_SUITE_NAME', value: 'bcs-one-live-governance-v1' }
+          { name: 'EVAL_SUITE_NAME', value: 'bcs-one-live-governance-v2' }
           { name: 'POSTGRES_HOST', value: postgresFqdn }
           { name: 'POSTGRES_PORT', value: '5432' }
           { name: 'POSTGRES_DATABASE', value: 'bcsone' }

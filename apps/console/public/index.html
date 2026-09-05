@@ -4,19 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>BCS ONE Control Center</title>
+  <title>BCS ONE Enterprise AI Control Center</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">B1</div>
-        <div><div class="brand-title">BCS ONE</div><div class="brand-subtitle">Enterprise Agent Platform</div></div>
-      </div>
+      <div class="brand"><div class="brand-mark">B1</div><div><div class="brand-title">BCS ONE</div><div class="brand-subtitle">Enterprise AI + MCP Platform</div></div></div>
       <nav class="nav">
-        <div class="nav-group"><div class="nav-label">LIVE</div>
-          <button class="nav-item active" data-view="live">Live Workflow</button>
+        <div class="nav-group"><div class="nav-label">EXECUTE</div>
+          <button class="nav-item active" data-view="scenarios">Scenario Lab</button>
         </div>
         <div class="nav-group"><div class="nav-label">STATE & CONTROL</div>
           <button class="nav-item" data-view="runs">Agent Runs</button>
@@ -30,113 +27,104 @@
           <button class="nav-item" data-view="products">Product Landscape</button>
         </div>
       </nav>
-      <div class="sidebar-footer">
-        <div class="mode-badge"><span class="pulse-dot"></span><span id="data-mode">SYNTHETIC</span></div>
-        <div id="environment" class="sidebar-meta">dev</div>
-      </div>
+      <div class="sidebar-footer"><div class="mode-badge"><span class="pulse-dot"></span><span id="data-mode">SYNTHETIC</span></div><div id="environment" class="sidebar-meta">dev</div></div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div><div class="eyebrow">BCS HR SOFTWARE</div><div id="page-title" class="topbar-title">Live Workflow</div></div>
+        <div><div class="eyebrow">BCS HR SOFTWARE</div><div id="page-title" class="topbar-title">Scenario Lab</div></div>
         <div class="topbar-actions">
-          <span class="status success">DURABLE STATE</span>
+          <span class="status success">LIVE AZURE</span><span class="status info">DURABLE STATE</span>
           <div id="identity-chip" class="identity-chip hidden"><span class="identity-dot"></span><span id="identity-text">Signed in</span></div>
-          <button id="login-button" class="button primary">Sign in with Entra</button>
-          <button id="logout-button" class="button secondary hidden">Sign out</button>
+          <button id="login-button" class="button primary">Sign in with Entra</button><button id="logout-button" class="button secondary hidden">Sign out</button>
         </div>
       </header>
 
-      <section id="view-live" class="page view active-view">
+      <section id="view-scenarios" class="page view active-view">
         <div class="hero-row">
-          <div><div class="eyebrow">GOVERNED STATEFUL AGENT RUN</div><h1>Watch one HR request cross identity, policy, agents, MCP, product adapter and AI.</h1><p>Execution events stream live while checkpoints, shared agent artifacts and run evidence are persisted in PostgreSQL.</p></div>
+          <div><div class="eyebrow">REAL-TIME MCP EXECUTION LAB</div><h1>Prove one MCP call, multi-MCP federation, structured data flow and grounded AI synthesis.</h1><p>Select a BCS-relevant scenario. Every blue and green node below is driven by live execution events, not a presentation animation.</p></div>
           <div class="hero-status"><span id="run-status" class="status neutral">READY</span><div id="run-request-id" class="mono muted">request: —</div></div>
         </div>
 
-        <div class="grid two-col">
-          <article class="card">
-            <div class="card-header"><div><div class="card-title">Employee payroll request</div><div class="card-subtitle">Stateful BCS ONE workflow</div></div></div>
+        <div class="scenario-layout">
+          <article class="card scenario-library">
+            <div class="card-header"><div><div class="card-title">Enterprise scenario catalog</div><div class="card-subtitle">Single and multi-MCP workflows across the BCS portfolio</div></div><span id="scenario-count" class="counter">0 scenarios</span></div>
+            <div id="scenario-grid" class="card-body scenario-grid"><div class="empty-state">Sign in to load executable scenarios.</div></div>
+          </article>
+
+          <article class="card run-control">
+            <div class="card-header"><div><div class="card-title">Run selected scenario</div><div id="selected-scenario-mode" class="card-subtitle">Choose a scenario</div></div></div>
             <div class="card-body">
-              <form id="workflow-form" class="form-grid">
+              <div id="selected-scenario-value" class="value-callout">Select a scenario to inspect its business value and planned MCP calls.</div>
+              <form id="scenario-form" class="form-grid compact-form">
                 <label>Employee ID<input id="employee-id" value="EMP-1001" autocomplete="off" /></label>
                 <label>Period<input id="period" value="2026-08" autocomplete="off" /></label>
-                <label>Thread ID<input id="thread-id" value="EMP-1001-HR-SESSION" autocomplete="off" /></label>
-                <label class="check-row"><input id="explain" type="checkbox" checked /><span>Generate grounded AI explanation</span></label>
-                <div class="form-actions"><button class="button primary" type="submit">Run stateful workflow</button><button id="clear-run" class="button secondary" type="button">Clear</button></div>
+                <label>Candidate ID<input id="candidate-id" value="CAND-1001" autocomplete="off" /></label>
+                <label>Thread ID<input id="thread-id" value="EMP-1001-HR-SCENARIO" autocomplete="off" /></label>
+                <label class="check-row"><input id="explain" type="checkbox" checked /><span>Invoke Azure OpenAI for grounded cross-product synthesis</span></label>
+                <div class="form-actions"><button id="run-scenario" class="button primary" type="submit">Run live scenario</button><button id="clear-run" class="button secondary" type="button">Clear run</button></div>
                 <div id="workflow-error" class="form-error" aria-live="polite"></div>
               </form>
             </div>
           </article>
-          <article class="card governance-card">
-            <div class="card-header"><div><div class="card-title">Identity, state & governance</div><div class="card-subtitle">Trusted context and durable evidence</div></div></div>
-            <div class="card-body key-values">
-              <span>Authentication</span><strong>Microsoft Entra ID</strong>
-              <span>Role</span><strong id="role-value">—</strong>
-              <span>Policy decision</span><strong id="policy-value">Waiting</strong>
-              <span>Purpose</span><strong id="purpose-value">—</strong>
-              <span>State backend</span><strong>PostgreSQL + LangGraph</strong>
-              <span>Data mode</span><strong>SYNTHETIC</strong>
-            </div>
-          </article>
         </div>
 
-        <article class="card metro-card">
-          <div class="card-header"><div><div class="card-title">Execution metro</div><div class="card-subtitle">Live correlated workflow stages</div></div><div id="run-duration" class="mono muted">0 ms</div></div>
-          <div class="card-body">
-            <div class="metro-wrap"><div class="metro-track"><div class="metro-line"></div><div id="metro-progress" class="metro-progress"></div>
-              <button class="metro-station" data-stage="identity"><span class="metro-dot">1</span><b>Entra</b><small>Identity</small></button>
-              <button class="metro-station" data-stage="gateway"><span class="metro-dot">2</span><b>Gateway</b><small>JWT + context</small></button>
-              <button class="metro-station" data-stage="policy"><span class="metro-dot">3</span><b>OPA</b><small>Authorization</small></button>
-              <button class="metro-station" data-stage="orchestrator"><span class="metro-dot">4</span><b>Agents</b><small>Supervisor + handoff</small></button>
-              <button class="metro-station" data-stage="mcp"><span class="metro-dot">5</span><b>MCP</b><small>Tool contract</small></button>
-              <button class="metro-station" data-stage="adapter"><span class="metro-dot">6</span><b>Adapter</b><small>Product bridge</small></button>
-              <button class="metro-station" data-stage="source"><span class="metro-dot">7</span><b>Payroll</b><small>Authoritative facts</small></button>
-              <button class="metro-station" data-stage="ai"><span class="metro-dot">8</span><b>Azure AI</b><small>Grounded explain</small></button>
-            </div></div>
-            <div id="station-detail" class="station-detail">Select a station to inspect its responsibility.</div>
+        <div class="metric-grid proof-metrics">
+          <div class="metric accent-blue"><span>Planned MCP calls</span><strong id="metric-planned-calls">—</strong><small id="metric-mode">single / multi</small></div>
+          <div class="metric accent-green"><span>Completed MCP calls</span><strong id="metric-completed-calls">0</strong><small>actual tools/call</small></div>
+          <div class="metric"><span>Products reached</span><strong id="metric-run-products">0</strong><small>source adapters</small></div>
+          <div class="metric"><span>Governed artifacts</span><strong id="metric-artifacts">0</strong><small>persisted evidence</small></div>
+          <div class="metric accent-blue"><span>LLM synthesis</span><strong id="metric-ai">WAITING</strong><small>grounded only</small></div>
+        </div>
+
+        <article class="card graph-card">
+          <div class="card-header"><div><div class="card-title">Live execution tree</div><div class="card-subtitle">Blue = identity / policy / agents / AI · Green = MCP / adapter / source structured data</div></div><div class="graph-legend"><span><i class="legend-blue"></i>Control + AI</span><span><i class="legend-green"></i>MCP + Data</span><span><i class="legend-red"></i>Failure</span></div></div>
+          <div class="graph-shell">
+            <div class="graph-canvas-wrap"><svg id="flow-graph" class="flow-graph" role="img" aria-label="Live MCP execution graph"></svg></div>
+            <aside id="node-inspector" class="node-inspector"><div class="empty-state">Click a graph node to inspect capability, product, call ID, data shape and persisted artifact.</div></aside>
           </div>
         </article>
 
-        <div class="grid three-col">
-          <article class="card"><div class="card-header"><div class="card-title">Authoritative facts</div></div><div id="facts-panel" class="card-body empty-state">Run the workflow to load payroll facts.</div></article>
-          <article class="card"><div class="card-header"><div class="card-title">Grounded AI response</div></div><div id="ai-panel" class="card-body empty-state">AI has not been invoked.</div></article>
-          <article class="card"><div class="card-header"><div class="card-title">Provenance</div></div><div id="provenance-panel" class="card-body empty-state">Source evidence will appear here.</div></article>
+        <div class="grid two-col proof-grid">
+          <article class="card"><div class="card-header"><div><div class="card-title">MCP call proof</div><div class="card-subtitle">Every row represents a real MCP tools/call</div></div><span id="mcp-proof-count" class="counter">0 calls</span></div><div id="mcp-proof" class="card-body"><div class="empty-state">No MCP calls yet.</div></div></article>
+          <article class="card"><div class="card-header"><div><div class="card-title">Why the LLM adds value</div><div class="card-subtitle">Model reasoning is downstream of governed source facts</div></div></div><div id="ai-value-panel" class="card-body"><div class="empty-state">Run a scenario with AI synthesis enabled.</div></div></article>
         </div>
 
-        <article class="card trace-card"><div class="card-header"><div><div class="card-title">Real-time trace</div><div class="card-subtitle">Live SSE plus durable run evidence</div></div><span id="event-count" class="counter">0 events</span></div><div class="card-body"><div id="trace-table" class="trace-table"><div class="empty-state">No trace events yet.</div></div></div></article>
+        <article class="card data-card"><div class="card-header"><div><div class="card-title">Structured data assembly</div><div class="card-subtitle">Canonical MCP structuredContent remains attributable to product and source system</div></div><span id="data-source-count" class="counter">0 sources</span></div><div id="structured-data" class="card-body data-grid"><div class="empty-state">Structured source data will appear after MCP calls complete.</div></div></article>
+
+        <article class="card trace-card"><div class="card-header"><div><div class="card-title">Real-time correlated trace</div><div class="card-subtitle">Request, agent, policy, MCP, adapter, source, artifact and AI evidence</div></div><span id="event-count" class="counter">0 events</span></div><div class="card-body"><div id="trace-table" class="trace-table"><div class="empty-state">No trace events yet.</div></div></div></article>
       </section>
 
       <section id="view-runs" class="page view">
-        <div class="hero-row"><div><div class="eyebrow">DURABLE AGENT STATE</div><h1>Persistent Agent Runs</h1><p>Runs survive browser sessions and container restarts. Inspect checkpoints, agent handoffs, source artifacts and correlated events.</p></div><button id="refresh-runs" class="button secondary">Refresh runs</button></div>
-        <div class="metric-grid"><div class="metric"><span>Persisted runs</span><strong id="runs-total">—</strong></div><div class="metric"><span>Completed</span><strong id="runs-completed">—</strong></div><div class="metric"><span>Failed / waiting</span><strong id="runs-exception">—</strong></div><div class="metric"><span>Backend</span><strong id="runs-backend">Postgres</strong></div></div>
-        <div class="grid two-col runs-layout"><article class="card"><div class="card-header"><div><div class="card-title">Run history</div><div class="card-subtitle">Tenant-scoped persistent execution history</div></div></div><div id="run-list" class="card-body run-list"><div class="empty-state">Sign in to load persistent runs.</div></div></article><article class="card"><div class="card-header"><div><div class="card-title">Run inspector</div><div class="card-subtitle">Safe metadata, events and artifact references</div></div></div><div id="run-detail" class="card-body empty-state">Select a run.</div></article></div>
+        <div class="hero-row"><div><div class="eyebrow">DURABLE AGENT STATE</div><h1>Persistent Agent Runs</h1><p>Inspect previous scenario executions, graph nodes and artifact references after browser refresh or container restart.</p></div><button id="refresh-runs" class="button secondary">Refresh runs</button></div>
+        <div class="metric-grid"><div class="metric"><span>Persisted runs</span><strong id="runs-total">—</strong></div><div class="metric"><span>Completed</span><strong id="runs-completed">—</strong></div><div class="metric"><span>Failed / waiting</span><strong id="runs-exception">—</strong></div><div class="metric"><span>Backend</span><strong>PostgreSQL</strong></div></div>
+        <div class="grid two-col runs-layout"><article class="card"><div class="card-header"><div class="card-title">Run history</div></div><div id="run-list" class="card-body run-list"><div class="empty-state">Sign in to load runs.</div></div></article><article class="card"><div class="card-header"><div class="card-title">Run inspector</div></div><div id="run-detail" class="card-body empty-state">Select a run.</div></article></div>
       </section>
 
       <section id="view-observability" class="page view">
-        <div class="hero-row"><div><div class="eyebrow">OBSERVABILITY</div><h1>Evidence for every AI and MCP execution step.</h1><p>Use request and run IDs to correlate policy, agent handoffs, MCP, adapter, source, persisted artifacts and model activity.</p></div><span id="obs-health" class="status neutral">NO RUN</span></div>
-        <div class="metric-grid"><div class="metric"><span>Last duration</span><strong id="obs-duration">—</strong></div><div class="metric"><span>Trace events</span><strong id="obs-events">0</strong></div><div class="metric"><span>MCP tools used</span><strong id="obs-tools">0</strong></div><div class="metric"><span>Policy</span><strong id="obs-policy">—</strong></div></div>
-        <div class="grid two-col"><article class="card"><div class="card-header"><div><div class="card-title">Stage latency</div><div class="card-subtitle">Observed from the latest run</div></div></div><div id="latency-list" class="card-body latency-list"><div class="empty-state">Run a workflow first.</div></div></article><article class="card"><div class="card-header"><div><div class="card-title">Run evidence</div><div class="card-subtitle">Safe operational metadata</div></div></div><div id="evidence-list" class="card-body key-values"><span>Request ID</span><strong>—</strong><span>Run ID</span><strong>—</strong><span>Source</span><strong>—</strong><span>AI invoked</span><strong>—</strong><span>Result</span><strong>—</strong></div></article></div>
+        <div class="hero-row"><div><div class="eyebrow">OBSERVABILITY</div><h1>Execution evidence, MCP fan-out and stage latency.</h1><p>The latest run remains correlated by request ID, run ID, call ID, graph node ID and artifact ID.</p></div><span id="obs-health" class="status neutral">NO RUN</span></div>
+        <div class="metric-grid"><div class="metric"><span>Last duration</span><strong id="obs-duration">—</strong></div><div class="metric"><span>Trace events</span><strong id="obs-events">0</strong></div><div class="metric"><span>MCP calls</span><strong id="obs-tools">0</strong></div><div class="metric"><span>Policy</span><strong id="obs-policy">—</strong></div></div>
+        <div class="grid two-col"><article class="card"><div class="card-header"><div class="card-title">Stage latency</div></div><div id="latency-list" class="card-body latency-list"><div class="empty-state">Run a scenario first.</div></div></article><article class="card"><div class="card-header"><div class="card-title">Run evidence</div></div><div id="evidence-list" class="card-body key-values"><span>Request ID</span><strong>—</strong><span>Run ID</span><strong>—</strong><span>Scenario</span><strong>—</strong><span>AI invoked</span><strong>—</strong><span>Result</span><strong>—</strong></div></article></div>
       </section>
 
       <section id="view-evaluations" class="page view">
-        <div class="hero-row"><div><div class="eyebrow">RELEASE QUALITY GATE</div><h1>Agent Evaluation Suite</h1><p>Every release is gated by live policy, MCP, schema, tenant-isolation and grounding evaluations executed inside the Container Apps environment.</p></div><button id="refresh-evals" class="button secondary">Refresh evaluations</button></div>
+        <div class="hero-row"><div><div class="eyebrow">RELEASE QUALITY GATE</div><h1>Agent Evaluation Suite</h1><p>Policy, MCP, schema, tenant isolation and grounding tests gate releases.</p></div><button id="refresh-evals" class="button secondary">Refresh evaluations</button></div>
         <div class="metric-grid"><div class="metric"><span>Latest status</span><strong id="eval-status">—</strong></div><div class="metric"><span>Pass rate</span><strong id="eval-pass-rate">—</strong></div><div class="metric"><span>Hard gate failures</span><strong id="eval-hard-failures">—</strong></div><div class="metric"><span>Suite</span><strong id="eval-suite">—</strong></div></div>
-        <article class="card"><div class="card-header"><div><div class="card-title">Evaluation history</div><div class="card-subtitle">Release-correlated regression evidence</div></div></div><div id="eval-list" class="card-body eval-list"><div class="empty-state">Sign in as HR or payroll to view evaluation history.</div></div></article>
+        <article class="card"><div id="eval-list" class="card-body eval-list"><div class="empty-state">Sign in as HR or payroll to view evaluation history.</div></div></article>
       </section>
 
       <section id="view-mcp" class="page view">
-        <div class="hero-row"><div><div class="eyebrow">MODEL CONTEXT PROTOCOL</div><h1>BCS ONE Capability Hub</h1><p>Discover canonical capabilities without coupling the agent to individual BCS products.</p></div><button id="refresh-tools" class="button secondary">Refresh tools/list</button></div>
-        <div class="metric-grid"><div class="metric"><span>Tools discovered</span><strong id="metric-tools">—</strong></div><div class="metric"><span>Live tools</span><strong id="metric-live">—</strong></div><div class="metric"><span>Mapped products</span><strong id="metric-products">—</strong></div><div class="metric"><span>Protocol</span><strong>2026-07-28</strong></div></div>
-        <article class="card"><div class="card-header"><div><div class="card-title">Capability catalog</div><div class="card-subtitle">Data comes from the deployed MCP server tools/list response</div></div><input id="tool-search" class="search-input" placeholder="Search payroll, leave, Timegrip…" /></div><div id="tool-grid" class="card-body tool-grid"><div class="empty-state">Sign in and refresh to discover MCP tools.</div></div></article>
+        <div class="hero-row"><div><div class="eyebrow">MODEL CONTEXT PROTOCOL</div><h1>BCS ONE Capability Hub</h1><p>Discover executable and catalog capabilities independently of product-specific APIs.</p></div><button id="refresh-tools" class="button secondary">Refresh tools/list</button></div>
+        <div class="metric-grid"><div class="metric"><span>Tools discovered</span><strong id="metric-tools">—</strong></div><div class="metric accent-green"><span>Live tools</span><strong id="metric-live">—</strong></div><div class="metric"><span>Mapped products</span><strong id="metric-products">—</strong></div><div class="metric"><span>Protocol</span><strong>2026-07-28</strong></div></div>
+        <article class="card"><div class="card-header"><div class="card-title">Capability catalog</div><input id="tool-search" class="search-input" placeholder="Search payroll, Timegrip, Plek…" /></div><div id="tool-grid" class="card-body tool-grid"><div class="empty-state">Sign in and refresh to discover MCP tools.</div></div></article>
       </section>
 
       <section id="view-products" class="page view">
-        <div class="hero-row"><div><div class="eyebrow">BCS PRODUCT FEDERATION</div><h1>One employee journey, multiple specialist products.</h1><p>The canonical MCP layer keeps the agent stable while adapters connect BCS and acquired product capabilities.</p></div><span class="status info">PORTFOLIO MAP</span></div>
+        <div class="hero-row"><div><div class="eyebrow">BCS PRODUCT FEDERATION</div><h1>One canonical AI layer across specialist BCS products.</h1><p>Live reference adapters prove the routing architecture while remaining explicitly synthetic.</p></div><span class="status info">PORTFOLIO MAP</span></div>
         <div id="product-grid" class="product-grid"></div>
       </section>
     </main>
   </div>
-  <script src="/config.js"></script>
-  <script src="/app.js" defer></script>
+  <script src="/config.js"></script><script src="/app.js" defer></script>
 </body>
 </html>

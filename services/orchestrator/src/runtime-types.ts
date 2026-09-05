@@ -20,8 +20,19 @@ export type WorkflowEvent = {
   agent?: string;
   message?: string;
   tool?: string;
+  capability?: string;
+  product?: string;
+  sourceSystem?: string;
   durationMs?: number;
   artifactId?: string;
+  nodeId?: string;
+  parentNodeId?: string;
+  lane?: 'control' | 'governance' | 'mcp' | 'data' | 'ai';
+  callId?: string;
+  mcpCallIndex?: number;
+  mcpCallTotal?: number;
+  inputKeys?: string[];
+  outputShape?: string[];
   payload?: unknown;
 };
 
@@ -48,6 +59,7 @@ export type RunRecord = {
   tenantId: string;
   userId: string;
   workflowType: string;
+  scenarioId?: string;
   status: 'running' | 'completed' | 'failed' | 'waiting';
   currentNode?: string;
   purpose: string;
