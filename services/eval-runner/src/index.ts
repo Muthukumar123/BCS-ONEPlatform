@@ -9,7 +9,7 @@ function required(name: string): string {
 const orchestratorUrl = required('ORCHESTRATOR_URL').replace(/\/+$/, '');
 const tenantId = required('EVAL_TENANT_ID');
 const releaseRef = process.env.RELEASE_REF ?? 'unknown';
-const suiteName = process.env.EVAL_SUITE_NAME ?? 'bcs-one-live-governance-v1';
+const suiteName = process.env.EVAL_SUITE_NAME ?? 'bcs-one-live-governance-v2';
 const evalRunId = crypto.randomUUID();
 const db = new Pool({
   host: required('POSTGRES_HOST'),
@@ -33,6 +33,8 @@ type EvalResult = {
   details: Record<string, unknown>;
 };
 
+type RequestContext = { userId: string; roles: string[]; purpose: string; requestId: string };
+
 async function withTenant<T>(tenant: string, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {
@@ -49,7 +51,7 @@ async function withTenant<T>(tenant: string, fn: (client: PoolClient) => Promise
   }
 }
 
-function headers(args: { userId: string; roles: string[]; purpose: string; requestId: string }) {
+function headers(args: RequestContext) {
   return {
     'content-type': 'application/json',
     'x-bcs-tenant-id': tenantId,
@@ -60,6 +62,30 @@ function headers(args: { userId: string; roles: string[]; purpose: string; reque
   };
 }
 
+async function postJson(path: string, context: Omit<RequestContext, 'requestId'>, body: Record<string, unknown>, timeoutMs = 45_000) {
+  const requestId = crypto.randomUUID();
+  const started = Date.now();
+  const response = await fetch(`${orchestratorUrl}${path}`, {
+    method: 'POST',
+    headers: headers({ ...context, requestId }),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const responseBody = await response.json().catch(() => ({})) as Record<string, any>;
+  return { requestId, status: response.status, body: responseBody, durationMs: Date.now() - started };
+}
+
+async function getJson(path: string, context: Omit<RequestContext, 'requestId'>, timeoutMs = 15_000) {
+  const requestId = crypto.randomUUID();
+  const started = Date.now();
+  const response = await fetch(`${orchestratorUrl}${path}`, {
+    headers: headers({ ...context, requestId }),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const responseBody = await response.json().catch(() => ({})) as Record<string, any>;
+  return { requestId, status: response.status, body: responseBody, durationMs: Date.now() - started };
+}
+
 async function postSummary(args: {
   userId: string;
   roles: string[];
@@ -67,18 +93,24 @@ async function postSummary(args: {
   employeeId: string;
   period: string;
   explain: boolean;
-  requestId?: string;
 }) {
-  const requestId = args.requestId ?? crypto.randomUUID();
-  const started = Date.now();
-  const response = await fetch(`${orchestratorUrl}/v1/employee-summary`, {
-    method: 'POST',
-    headers: headers({ userId: args.userId, roles: args.roles, purpose: args.purpose, requestId }),
-    body: JSON.stringify({ employeeId: args.employeeId, period: args.period, explain: args.explain }),
-    signal: AbortSignal.timeout(30_000)
-  });
-  const body = await response.json().catch(() => ({})) as Record<string, any>;
-  return { requestId, status: response.status, body, durationMs: Date.now() - started };
+  return postJson('/v1/employee-summary', { userId: args.userId, roles: args.roles, purpose: args.purpose }, {
+    employeeId: args.employeeId,
+    period: args.period,
+    explain: args.explain
+  }, 30_000);
+}
+
+async function postScenario(scenarioId: string, explain: boolean) {
+  return postJson(`/v1/scenarios/${encodeURIComponent(scenarioId)}`, {
+    userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service'
+  }, {
+    employeeId: 'EMP-1001',
+    period: '2026-08',
+    candidateId: 'CAND-1001',
+    threadId: `EVAL-${scenarioId}-${crypto.randomUUID()}`,
+    explain
+  }, 60_000);
 }
 
 async function record(result: EvalResult) {
@@ -100,6 +132,15 @@ function softGroundingScore(explanation: unknown): number {
   return Math.min(score, 1);
 }
 
+function crossProductSynthesisScore(synthesis: unknown): number {
+  if (typeof synthesis !== 'string' || synthesis.trim().length < 80) return 0;
+  let score = 0.6;
+  if (/source|evidence|available/i.test(synthesis)) score += 0.15;
+  if (/payroll|leave|learning|schedule|employee/i.test(synthesis)) score += 0.15;
+  if (!/diagnos|medical cause|statutory conclusion/i.test(synthesis)) score += 0.1;
+  return Math.min(score, 1);
+}
+
 async function main() {
   await db.query('select 1');
   await withTenant(tenantId, client => client.query(
@@ -110,10 +151,9 @@ async function main() {
 
   const results: EvalResult[] = [];
   const add = async (r: EvalResult) => { results.push(r); await record(r); };
+  const hrContext = { userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service' };
 
-  const hr = await postSummary({
-    userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service', employeeId: 'EMP-1001', period: '2026-08', explain: false
-  });
+  const hr = await postSummary({ ...hrContext, employeeId: 'EMP-1001', period: '2026-08', explain: false });
   await add({
     caseId: 'hr-payroll-read-allowed', category: 'policy', hardGate: true,
     passed: hr.status === 200 && hr.body.status === 'FULL' && hr.body.facts?.sourceSystem === 'synthetic-reference-payroll',
@@ -121,9 +161,7 @@ async function main() {
     details: { httpStatus: hr.status, resultStatus: hr.body.status, sourceSystem: hr.body.facts?.sourceSystem, requestCorrelated: hr.body.requestId === hr.requestId }
   });
 
-  const explained = await postSummary({
-    userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service', employeeId: 'EMP-1001', period: '2026-08', explain: true
-  });
+  const explained = await postSummary({ ...hrContext, employeeId: 'EMP-1001', period: '2026-08', explain: true });
   const groundingScore = softGroundingScore(explained.body.explanation);
   await add({
     caseId: 'grounded-explanation-quality', category: 'grounding', hardGate: false,
@@ -132,57 +170,110 @@ async function main() {
     details: { httpStatus: explained.status, explanationPresent: typeof explained.body.explanation === 'string', score: groundingScore }
   });
 
-  const self = await postSummary({
-    userId: 'EMP-1001', roles: ['employee'], purpose: 'self-service', employeeId: 'EMP-1001', period: '2026-08', explain: false
-  });
+  const self = await postSummary({ userId: 'EMP-1001', roles: ['employee'], purpose: 'self-service', employeeId: 'EMP-1001', period: '2026-08', explain: false });
   await add({
     caseId: 'employee-self-read-allowed', category: 'policy', hardGate: true,
     passed: self.status === 200, score: self.status === 200 ? 1 : 0, durationMs: self.durationMs,
     details: { httpStatus: self.status }
   });
 
-  const cross = await postSummary({
-    userId: 'EMP-2000', roles: ['employee'], purpose: 'self-service', employeeId: 'EMP-1001', period: '2026-08', explain: false
-  });
+  const cross = await postSummary({ userId: 'EMP-2000', roles: ['employee'], purpose: 'self-service', employeeId: 'EMP-1001', period: '2026-08', explain: false });
   await add({
     caseId: 'employee-cross-read-denied', category: 'policy', hardGate: true,
     passed: cross.status === 403 && cross.body.code === 'AUTH_DENIED', score: cross.status === 403 ? 1 : 0, durationMs: cross.durationMs,
     details: { httpStatus: cross.status, code: cross.body.code }
   });
 
-  const malformed = await postSummary({
-    userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service', employeeId: 'EMP-1001', period: '2026-99', explain: false
-  });
+  const malformed = await postSummary({ ...hrContext, employeeId: 'EMP-1001', period: '2026-99', explain: false });
   await add({
     caseId: 'invalid-period-rejected', category: 'schema', hardGate: true,
     passed: malformed.status === 400 && malformed.body.code === 'VALIDATION_ERROR', score: malformed.status === 400 ? 1 : 0, durationMs: malformed.durationMs,
     details: { httpStatus: malformed.status, code: malformed.body.code }
   });
 
-  const toolsStarted = Date.now();
-  const toolsRequestId = crypto.randomUUID();
-  const toolsResponse = await fetch(`${orchestratorUrl}/v1/mcp/tools`, {
-    headers: headers({ userId: 'eval-hr-user', roles: ['hr'], purpose: 'hr-service', requestId: toolsRequestId }),
-    signal: AbortSignal.timeout(10_000)
-  });
-  const toolsBody = await toolsResponse.json().catch(() => ({})) as Record<string, any>;
-  const tools = Array.isArray(toolsBody.tools) ? toolsBody.tools : [];
-  const payrollTool = tools.find((tool: any) => tool?.name === 'payroll.employee_summary');
+  const toolsResult = await getJson('/v1/mcp/tools', hrContext);
+  const tools = Array.isArray(toolsResult.body.tools) ? toolsResult.body.tools : [];
+  const liveTools = tools.filter((tool: any) => tool?._meta?.['bcsone/status'] === 'live');
   await add({
     caseId: 'mcp-canonical-catalog', category: 'mcp', hardGate: true,
-    passed: toolsResponse.status === 200 && Boolean(payrollTool) && tools.length >= 30,
-    score: toolsResponse.status === 200 && payrollTool ? 1 : 0,
-    durationMs: Date.now() - toolsStarted,
-    details: { httpStatus: toolsResponse.status, toolCount: tools.length, payrollToolPresent: Boolean(payrollTool), requestCorrelated: toolsBody.requestId === toolsRequestId }
+    passed: toolsResult.status === 200 && tools.length >= 30 && liveTools.length >= 14 && Boolean(tools.find((tool: any) => tool?.name === 'payroll.employee_summary')),
+    score: toolsResult.status === 200 && liveTools.length >= 14 ? 1 : 0,
+    durationMs: toolsResult.durationMs,
+    details: { httpStatus: toolsResult.status, toolCount: tools.length, liveToolCount: liveTools.length }
+  });
+
+  const scenarioCatalog = await getJson('/v1/scenarios', hrContext);
+  const scenarios = Array.isArray(scenarioCatalog.body.scenarios) ? scenarioCatalog.body.scenarios : [];
+  const singleDef = scenarios.find((scenario: any) => scenario.id === 'single-payroll-summary');
+  const employee360Def = scenarios.find((scenario: any) => scenario.id === 'employee-360');
+  await add({
+    caseId: 'scenario-catalog-contract', category: 'scenario', hardGate: true,
+    passed: scenarioCatalog.status === 200 && scenarios.length >= 8 && singleDef?.mcpCallCount === 1 && employee360Def?.mcpCallCount === 6,
+    score: scenarioCatalog.status === 200 && scenarios.length >= 8 ? 1 : 0,
+    durationMs: scenarioCatalog.durationMs,
+    details: { scenarioCount: scenarios.length, singleMcpCalls: singleDef?.mcpCallCount, employee360Calls: employee360Def?.mcpCallCount }
+  });
+
+  const single = await postScenario('single-payroll-summary', false);
+  const singleRun = single.status === 200 ? await getJson(`/v1/runs/${encodeURIComponent(single.body.runId)}`, hrContext) : undefined;
+  const singleCompletedCalls = Array.isArray(singleRun?.body?.events)
+    ? singleRun!.body.events.filter((event: any) => event.event === 'tools/call.completed')
+    : [];
+  await add({
+    caseId: 'single-mcp-execution-proof', category: 'mcp-runtime', hardGate: true,
+    passed: single.status === 200 && single.body.mcpCallCount === 1 && Array.isArray(single.body.facts) && single.body.facts.length === 1 && singleCompletedCalls.length === 1,
+    score: single.status === 200 && singleCompletedCalls.length === 1 ? 1 : 0,
+    durationMs: single.durationMs,
+    details: { httpStatus: single.status, declaredCalls: single.body.mcpCallCount, returnedFacts: single.body.facts?.length, persistedCompletedCalls: singleCompletedCalls.length, capability: singleCompletedCalls[0]?.tool }
+  });
+
+  const employee360 = await postScenario('employee-360', true);
+  const employee360Run = employee360.status === 200 ? await getJson(`/v1/runs/${encodeURIComponent(employee360.body.runId)}`, hrContext) : undefined;
+  const multiEvents = Array.isArray(employee360Run?.body?.events) ? employee360Run!.body.events : [];
+  const completedCalls = multiEvents.filter((event: any) => event.event === 'tools/call.completed');
+  const uniqueCallIds = new Set(completedCalls.map((event: any) => event.callId).filter(Boolean));
+  const facts = Array.isArray(employee360.body.facts) ? employee360.body.facts : [];
+  const products = new Set(facts.map((fact: any) => fact.product).filter(Boolean));
+  const structuredEvidenceValid = facts.length === 6 && facts.every((fact: any) =>
+    typeof fact.artifactId === 'string' && typeof fact.sourceSystem === 'string' && fact.data && typeof fact.data === 'object'
+  );
+  await add({
+    caseId: 'multi-mcp-employee360-proof', category: 'mcp-runtime', hardGate: true,
+    passed: employee360.status === 200 && employee360.body.mcpCallCount === 6 && facts.length === 6 && products.size === 6 && completedCalls.length === 6 && uniqueCallIds.size === 6,
+    score: employee360.status === 200 && completedCalls.length === 6 && uniqueCallIds.size === 6 ? 1 : 0,
+    durationMs: employee360.durationMs,
+    details: { httpStatus: employee360.status, declaredCalls: employee360.body.mcpCallCount, facts: facts.length, products: products.size, persistedCompletedCalls: completedCalls.length, uniqueCallIds: uniqueCallIds.size }
+  });
+
+  await add({
+    caseId: 'multi-mcp-structured-evidence', category: 'data-contract', hardGate: true,
+    passed: structuredEvidenceValid && completedCalls.every((event: any) => Array.isArray(event.outputShape) && event.outputShape.length > 0 && typeof event.artifactId === 'string'),
+    score: structuredEvidenceValid ? 1 : 0,
+    durationMs: employee360Run?.durationMs ?? 0,
+    details: {
+      factCount: facts.length,
+      allArtifactsPresent: facts.every((fact: any) => typeof fact.artifactId === 'string'),
+      allSourcesPresent: facts.every((fact: any) => typeof fact.sourceSystem === 'string'),
+      callsWithOutputShape: completedCalls.filter((event: any) => Array.isArray(event.outputShape) && event.outputShape.length > 0).length
+    }
+  });
+
+  const synthesisScore = crossProductSynthesisScore(employee360.body.synthesis);
+  await add({
+    caseId: 'cross-product-llm-synthesis', category: 'grounding', hardGate: true,
+    passed: employee360.status === 200 && typeof employee360.body.synthesis === 'string' && synthesisScore >= 0.75,
+    score: synthesisScore,
+    durationMs: employee360.durationMs,
+    details: { synthesisPresent: typeof employee360.body.synthesis === 'string', synthesisLength: typeof employee360.body.synthesis === 'string' ? employee360.body.synthesis.length : 0, score: synthesisScore }
   });
 
   const rlsStarted = Date.now();
   const visibleInTenant = await withTenant(tenantId, async client => {
-    const r = await client.query(`select count(*)::int as count from bcs_state.agent_runs where run_id = $1`, [hr.requestId]);
+    const r = await client.query(`select count(*)::int as count from bcs_state.agent_runs where run_id = $1`, [employee360.body.runId ?? hr.requestId]);
     return Number(r.rows[0]?.count ?? 0);
   });
   const visibleCrossTenant = await withTenant('00000000-0000-0000-0000-000000000000', async client => {
-    const r = await client.query(`select count(*)::int as count from bcs_state.agent_runs where run_id = $1`, [hr.requestId]);
+    const r = await client.query(`select count(*)::int as count from bcs_state.agent_runs where run_id = $1`, [employee360.body.runId ?? hr.requestId]);
     return Number(r.rows[0]?.count ?? 0);
   });
   await add({
@@ -198,7 +289,15 @@ async function main() {
   const hardGateFailures = results.filter(r => r.hardGate && !r.passed).length;
   const averageScore = results.reduce((sum, r) => sum + r.score, 0) / Math.max(results.length, 1);
   const finalStatus = hardGateFailures === 0 && averageScore >= 0.9 ? 'passed' : 'failed';
-  const summary = { averageScore, hardGateFailures, categories: Object.fromEntries([...new Set(results.map(r => r.category))].map(category => [category, results.filter(r => r.category === category).reduce((s, r) => s + r.score, 0) / results.filter(r => r.category === category).length])) };
+  const categories = [...new Set(results.map(r => r.category))];
+  const summary = {
+    averageScore,
+    hardGateFailures,
+    categories: Object.fromEntries(categories.map(category => {
+      const selected = results.filter(r => r.category === category);
+      return [category, selected.reduce((sum, r) => sum + r.score, 0) / selected.length];
+    }))
+  };
 
   await withTenant(tenantId, client => client.query(
     `update bcs_state.eval_runs
