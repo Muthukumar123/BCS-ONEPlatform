@@ -10,10 +10,8 @@ permissions:
 env:
   ENVIRONMENT: dev
   FOUNDATION_DEPLOYMENT: bcs-one-foundation-dev
+  STATE_JOBS_DEPLOYMENT: bcs-one-state-jobs-dev
   APPS_DEPLOYMENT: bcs-one-apps-dev
-  # Public OAuth client IDs are identifiers, not secrets. Prefer the repository variable
-  # when present, but keep the existing pilot client as the dev fallback so release is
-  # not blocked by a missing GitHub variable.
   CONSOLE_CLIENT_ID: ${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID || '9a0eeb37-dede-48ca-b740-0cf9ae7f016b' }}
 
 jobs:
@@ -46,6 +44,12 @@ jobs:
           test -n "$POSTGRES_ADMIN_PASSWORD" || { echo 'POSTGRES_ADMIN_PASSWORD secret is required'; exit 1; }
           test -n "$AZURE_LOCATION" || { echo 'AZURE_LOCATION is required'; exit 1; }
 
+      - name: Generate rotated runtime database credential
+        run: |
+          runtime_password=$(openssl rand -hex 32)
+          echo "::add-mask::$runtime_password"
+          echo "POSTGRES_RUNTIME_PASSWORD=$runtime_password" >> "$GITHUB_ENV"
+
       - name: Deploy Azure foundation
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -71,6 +75,7 @@ jobs:
           echo "identity_id=$(jq -r '.workloadIdentityResourceId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "identity_client_id=$(jq -r '.workloadIdentityClientId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "identity_principal_id=$(jq -r '.workloadIdentityPrincipalId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "postgres_fqdn=$(jq -r '.postgresFqdn.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
 
       - name: Verify privileged RBAC bootstrap
         run: |
@@ -92,7 +97,56 @@ jobs:
           az acr build --registry "$acr" --image "bcs-one/orchestrator:$tag" --file services/orchestrator/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/mcp-server:$tag" --file services/mcp-server/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/reference-payroll:$tag" --file services/adapters/reference-payroll/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/db-migrator:$tag" --file services/db-migrator/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/eval-runner:$tag" --file services/eval-runner/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/policy:$tag" --file policy/Dockerfile .
+
+      - name: Deploy privileged state migration job
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          az deployment group create \
+            --name "$STATE_JOBS_DEPLOYMENT" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/state-jobs.bicep \
+            --parameters \
+              environment="$ENVIRONMENT" \
+              location="${{ vars.AZURE_LOCATION }}" \
+              imageTag="$GITHUB_SHA" \
+              containerAppsEnvironmentId="${{ steps.foundation.outputs.cae_id }}" \
+              acrLoginServer="${{ steps.foundation.outputs.acr_login }}" \
+              managedIdentityId="${{ steps.foundation.outputs.identity_id }}" \
+              postgresFqdn="${{ steps.foundation.outputs.postgres_fqdn }}" \
+              postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD" \
+              postgresRuntimePassword="$POSTGRES_RUNTIME_PASSWORD"
+
+      - name: Run database migration and role rotation
+        run: |
+          job_name=$(az deployment group show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$STATE_JOBS_DEPLOYMENT" \
+            --query 'properties.outputs.dbMigratorJobName.value' -o tsv)
+          execution=$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query name -o tsv)
+          test -n "$execution" || { echo 'Database migration job did not return an execution name'; exit 1; }
+          echo "Migration execution: $execution"
+          for i in $(seq 1 60); do
+            status=$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv 2>/dev/null || true)
+            echo "Migration status: ${status:-Pending} ($i/60)"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded) exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo 'Database migration timed out'
+          exit 1
 
       - name: Deploy application tier
         run: |
@@ -112,7 +166,9 @@ jobs:
               azureOpenAIModelDeployment="${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}" \
               entraTenantId="${{ vars.BCS_ENTRA_TENANT_ID }}" \
               entraApiAudience="${{ vars.BCS_ENTRA_API_AUDIENCE }}" \
-              entraConsoleClientId="$CONSOLE_CLIENT_ID"
+              entraConsoleClientId="$CONSOLE_CLIENT_ID" \
+              postgresFqdn="${{ steps.foundation.outputs.postgres_fqdn }}" \
+              postgresRuntimePassword="$POSTGRES_RUNTIME_PASSWORD"
 
       - name: Read application outputs
         id: apps
@@ -123,6 +179,7 @@ jobs:
             --query 'properties.outputs' -o json)
           echo "gateway_url=$(jq -r '.gatewayUrl.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "console_url=$(jq -r '.consoleUrl.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "eval_job=$(jq -r '.evalRunnerJobName.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
 
       - name: Verify live health endpoints
         run: |
@@ -131,7 +188,7 @@ jobs:
 
           retry_curl() {
             local url="$1"
-            local attempts=18
+            local attempts=24
             local delay=5
             for i in $(seq 1 "$attempts"); do
               if curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$url"; then
@@ -151,13 +208,40 @@ jobs:
           grep -Fq "$CONSOLE_CLIENT_ID" <<< "$config" || { echo 'Console config does not contain the expected Entra client ID'; exit 1; }
           grep -Fq "$gateway_url" <<< "$config" || { echo 'Console config does not contain the deployed Gateway URL'; exit 1; }
 
+      - name: Run live enterprise agent evaluation gate
+        run: |
+          job_name="${{ steps.apps.outputs.eval_job }}"
+          execution=$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query name -o tsv)
+          test -n "$execution" || { echo 'Evaluation job did not return an execution name'; exit 1; }
+          echo "Evaluation execution: $execution"
+          for i in $(seq 1 120); do
+            status=$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv 2>/dev/null || true)
+            echo "Evaluation status: ${status:-Pending} ($i/120)"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded) exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo 'Agent evaluation gate timed out'
+          exit 1
+
       - name: Publish live endpoints
         run: |
           gateway_url="${{ steps.apps.outputs.gateway_url }}"
           console_url="${{ steps.apps.outputs.console_url }}"
-          echo "### BCS ONE live dev pilot" >> "$GITHUB_STEP_SUMMARY"
+          echo "### BCS ONE stateful enterprise release" >> "$GITHUB_STEP_SUMMARY"
           echo "Gateway: $gateway_url" >> "$GITHUB_STEP_SUMMARY"
           echo "Console: $console_url" >> "$GITHUB_STEP_SUMMARY"
           echo "Console redirect URI: $console_url/auth/callback" >> "$GITHUB_STEP_SUMMARY"
           echo "Console Entra client: $CONSOLE_CLIENT_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Durable state: PostgreSQL + LangGraph checkpoints" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release evaluation gate: PASSED" >> "$GITHUB_STEP_SUMMARY"
           echo "Image tag: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

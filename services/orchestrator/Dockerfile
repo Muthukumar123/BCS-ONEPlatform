@@ -13,7 +13,7 @@ WORKDIR /app
 COPY --from=build /workspace/services/orchestrator/dist ./dist
 COPY --from=build /prod/orchestrator/node_modules ./node_modules
 COPY --from=build /prod/orchestrator/package.json ./package.json
-RUN node -e "Promise.all([import('express'), import('@azure/identity'), import('openai')])"
+RUN node -e "Promise.all([import('express'), import('@azure/identity'), import('openai'), import('@langchain/langgraph'), import('@langchain/langgraph-checkpoint-postgres'), import('pg')])"
 USER node
 ENV PORT=3001
 EXPOSE 3001

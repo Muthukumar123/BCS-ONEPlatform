@@ -31,6 +31,8 @@ jobs:
         run: az bicep install
       - name: Compile foundation Bicep
         run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: Compile state jobs Bicep
+        run: az bicep build --file infra/state-jobs.bicep --stdout > /dev/null
       - name: Compile application Bicep
         run: az bicep build --file infra/apps.bicep --stdout > /dev/null
 

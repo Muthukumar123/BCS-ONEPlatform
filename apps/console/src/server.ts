@@ -1,6 +1,7 @@
 import express from 'express';
 import pino from 'pino';
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const app = express();
@@ -8,6 +9,11 @@ const log = pino({ name: 'console' });
 const port = Number(process.env.PORT ?? 3005);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
+const indexPath = path.join(publicDir, 'index.html');
+const indexHtml = (await readFile(indexPath, 'utf8')).replace(
+  '</head>',
+  '  <link rel="stylesheet" href="/stateful.css" />\n</head>'
+);
 
 app.disable('x-powered-by');
 app.use((_req, res, next) => {
@@ -35,8 +41,8 @@ app.get('/config.js', (_req, res) => {
   res.type('application/javascript').send(`window.__BCS_ONE_CONFIG__ = ${JSON.stringify(config)};`);
 });
 
+app.get('/', (_req, res) => res.type('html').send(indexHtml));
+app.get('/auth/callback', (_req, res) => res.type('html').send(indexHtml));
 app.use(express.static(publicDir, { etag: true, maxAge: '5m' }));
-app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
-app.get('/auth/callback', (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
 
 app.listen(port, () => log.info({ port }, 'BCS ONE console listening'));
