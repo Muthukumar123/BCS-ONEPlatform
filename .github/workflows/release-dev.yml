@@ -97,6 +97,7 @@ jobs:
           az acr build --registry "$acr" --image "bcs-one/orchestrator:$tag" --file services/orchestrator/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/mcp-server:$tag" --file services/mcp-server/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/reference-payroll:$tag" --file services/adapters/reference-payroll/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/reference-portfolio:$tag" --file services/adapters/reference-portfolio/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/db-migrator:$tag" --file services/db-migrator/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/eval-runner:$tag" --file services/eval-runner/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/policy:$tag" --file policy/Dockerfile .
@@ -243,5 +244,6 @@ jobs:
           echo "Console redirect URI: $console_url/auth/callback" >> "$GITHUB_STEP_SUMMARY"
           echo "Console Entra client: $CONSOLE_CLIENT_ID" >> "$GITHUB_STEP_SUMMARY"
           echo "Durable state: PostgreSQL + LangGraph checkpoints" >> "$GITHUB_STEP_SUMMARY"
+          echo "Scenario Lab: single + multi MCP federation" >> "$GITHUB_STEP_SUMMARY"
           echo "Release evaluation gate: PASSED" >> "$GITHUB_STEP_SUMMARY"
           echo "Image tag: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
