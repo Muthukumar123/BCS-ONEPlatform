@@ -9,6 +9,7 @@ param azureOpenAIEndpoint string
 param azureOpenAIModelDeployment string
 param entraTenantId string
 param entraApiAudience string
+param entraConsoleClientId string
 param tags object
 
 var registry = [{
@@ -191,6 +192,7 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
         env: [
           { name: 'PORT', value: '3000' }
           { name: 'ALLOW_DEV_HEADERS', value: 'false' }
+          { name: 'CORS_ORIGIN', value: '*' }
           { name: 'ORCHESTRATOR_URL', value: 'https://${orchestrator.properties.configuration.ingress.fqdn}' }
           { name: 'ENTRA_TENANT_ID', value: entraTenantId }
           { name: 'ENTRA_API_AUDIENCE', value: entraApiAudience }
@@ -211,4 +213,49 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
   }
 }
 
+resource console 'Microsoft.App/containerApps@2026-01-01' = {
+  name: '${prefix}-console'
+  location: location
+  tags: tags
+  identity: identityConfig
+  properties: {
+    managedEnvironmentId: environmentId
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: true
+        targetPort: 3005
+        transport: 'auto'
+      }
+      registries: registry
+    }
+    template: {
+      containers: [{
+        name: 'console'
+        image: '${acrLoginServer}/bcs-one/console:${imageTag}'
+        env: [
+          { name: 'PORT', value: '3005' }
+          { name: 'BCS_ENVIRONMENT', value: prefix }
+          { name: 'BCS_DATA_MODE', value: 'SYNTHETIC' }
+          { name: 'GATEWAY_URL', value: 'https://${gateway.properties.configuration.ingress.fqdn}' }
+          { name: 'ENTRA_TENANT_ID', value: entraTenantId }
+          { name: 'ENTRA_CONSOLE_CLIENT_ID', value: entraConsoleClientId }
+          { name: 'ENTRA_API_AUDIENCE', value: entraApiAudience }
+        ]
+        probes: [{
+          type: 'Liveness'
+          httpGet: { path: '/healthz', port: 3005, scheme: 'HTTP' }
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        }]
+        resources: { cpu: json('0.5'), memory: '1Gi' }
+      }]
+      scale: { minReplicas: 1, maxReplicas: 3 }
+    }
+  }
+}
+
 output gatewayFqdn string = gateway.properties.configuration.ingress.fqdn
+output consoleFqdn string = console.properties.configuration.ingress.fqdn
