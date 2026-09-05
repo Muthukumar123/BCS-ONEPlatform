@@ -75,6 +75,7 @@ module messaging './modules/messaging.bicep' = {
   params: {
     location: location
     prefix: prefix
+    uniqueSuffix: uniqueSuffix
     tags: tags
   }
 }
