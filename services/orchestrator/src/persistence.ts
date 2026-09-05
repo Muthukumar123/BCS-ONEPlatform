@@ -1,4 +1,4 @@
-import { InMemorySaver } from '@langchain/langgraph';
+import { MemorySaver } from '@langchain/langgraph';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { Pool, type PoolClient } from 'pg';
 import type { AgentArtifact, RunRecord, SecurityContext, WorkflowEvent } from './runtime-types.js';
@@ -60,10 +60,10 @@ function rowToRun(row: Record<string, any>): RunRecord {
 
 export class RuntimePersistence {
   readonly backend: 'memory' | 'postgres';
-  readonly checkpointer: InMemorySaver | PostgresSaver;
+  readonly checkpointer: MemorySaver | PostgresSaver;
   private readonly pool?: Pool;
 
-  private constructor(backend: 'memory' | 'postgres', checkpointer: InMemorySaver | PostgresSaver, pool?: Pool) {
+  private constructor(backend: 'memory' | 'postgres', checkpointer: MemorySaver | PostgresSaver, pool?: Pool) {
     this.backend = backend;
     this.checkpointer = checkpointer;
     this.pool = pool;
@@ -72,7 +72,7 @@ export class RuntimePersistence {
   static async create(): Promise<RuntimePersistence> {
     const backend = (process.env.STATE_BACKEND ?? 'memory').toLowerCase();
     if (backend !== 'postgres') {
-      return new RuntimePersistence('memory', new InMemorySaver());
+      return new RuntimePersistence('memory', new MemorySaver());
     }
 
     const connectionString = postgresConnectionString();
