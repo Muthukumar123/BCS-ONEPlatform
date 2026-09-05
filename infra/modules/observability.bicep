@@ -24,5 +24,6 @@ resource appi 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 output logAnalyticsCustomerId string = law.properties.customerId
+@secure()
 output logAnalyticsSharedKey string = law.listKeys().primarySharedKey
 output applicationInsightsConnectionString string = appi.properties.ConnectionString
