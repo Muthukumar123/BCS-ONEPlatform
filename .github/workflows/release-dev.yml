@@ -31,6 +31,7 @@ jobs:
           OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}
           BCS_TENANT_ID: ${{ vars.BCS_ENTRA_TENANT_ID }}
           BCS_AUDIENCE: ${{ vars.BCS_ENTRA_API_AUDIENCE }}
+          CONSOLE_CLIENT_ID: ${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
         run: |
@@ -38,6 +39,7 @@ jobs:
           test -n "$OPENAI_DEPLOYMENT" || { echo 'AZURE_OPENAI_MODEL_DEPLOYMENT is required'; exit 1; }
           test -n "$BCS_TENANT_ID" || { echo 'BCS_ENTRA_TENANT_ID is required'; exit 1; }
           test -n "$BCS_AUDIENCE" || { echo 'BCS_ENTRA_API_AUDIENCE is required'; exit 1; }
+          test -n "$CONSOLE_CLIENT_ID" || { echo 'BCS_ENTRA_CONSOLE_CLIENT_ID is required'; exit 1; }
           test -n "$POSTGRES_ADMIN_PASSWORD" || { echo 'POSTGRES_ADMIN_PASSWORD secret is required'; exit 1; }
           test -n "$AZURE_LOCATION" || { echo 'AZURE_LOCATION is required'; exit 1; }
 
@@ -82,6 +84,7 @@ jobs:
           tag="${GITHUB_SHA}"
           acr="${{ steps.foundation.outputs.acr_name }}"
           az acr build --registry "$acr" --image "bcs-one/gateway:$tag" --file apps/gateway/Dockerfile .
+          az acr build --registry "$acr" --image "bcs-one/console:$tag" --file apps/console/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/orchestrator:$tag" --file services/orchestrator/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/mcp-server:$tag" --file services/mcp-server/Dockerfile .
           az acr build --registry "$acr" --image "bcs-one/reference-payroll:$tag" --file services/adapters/reference-payroll/Dockerfile .
@@ -104,14 +107,19 @@ jobs:
               azureOpenAIEndpoint="${{ vars.AZURE_OPENAI_ENDPOINT }}" \
               azureOpenAIModelDeployment="${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}" \
               entraTenantId="${{ vars.BCS_ENTRA_TENANT_ID }}" \
-              entraApiAudience="${{ vars.BCS_ENTRA_API_AUDIENCE }}"
+              entraApiAudience="${{ vars.BCS_ENTRA_API_AUDIENCE }}" \
+              entraConsoleClientId="${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID }}"
 
-      - name: Publish live endpoint
+      - name: Publish live endpoints
         run: |
-          url=$(az deployment group show \
+          outputs=$(az deployment group show \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "$APPS_DEPLOYMENT" \
-            --query 'properties.outputs.gatewayUrl.value' -o tsv)
+            --query 'properties.outputs' -o json)
+          gateway_url=$(jq -r '.gatewayUrl.value' <<< "$outputs")
+          console_url=$(jq -r '.consoleUrl.value' <<< "$outputs")
           echo "### BCS ONE live dev pilot" >> "$GITHUB_STEP_SUMMARY"
-          echo "Gateway: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Gateway: $gateway_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Console: $console_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Console redirect URI: $console_url/auth/callback" >> "$GITHUB_STEP_SUMMARY"
           echo "Image tag: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

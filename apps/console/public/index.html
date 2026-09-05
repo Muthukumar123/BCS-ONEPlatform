@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>BCS ONE Control Center</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">B1</div>
+        <div><div class="brand-title">BCS ONE</div><div class="brand-subtitle">AI + MCP Control Center</div></div>
+      </div>
+      <nav class="nav">
+        <div class="nav-group"><div class="nav-label">LIVE</div>
+          <button class="nav-item active" data-view="live">Live Workflow</button>
+          <button class="nav-item" data-view="observability">Observability</button>
+        </div>
+        <div class="nav-group"><div class="nav-label">MCP</div>
+          <button class="nav-item" data-view="mcp">Capability Hub</button>
+        </div>
+        <div class="nav-group"><div class="nav-label">BCS ECOSYSTEM</div>
+          <button class="nav-item" data-view="products">Product Landscape</button>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="mode-badge"><span class="pulse-dot"></span><span id="data-mode">SYNTHETIC</span></div>
+        <div id="environment" class="sidebar-meta">dev</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">BCS HR SOFTWARE</div><div id="page-title" class="topbar-title">Live Workflow</div></div>
+        <div class="topbar-actions">
+          <div id="identity-chip" class="identity-chip hidden"><span class="identity-dot"></span><span id="identity-text">Signed in</span></div>
+          <button id="login-button" class="button primary">Sign in with Entra</button>
+          <button id="logout-button" class="button secondary hidden">Sign out</button>
+        </div>
+      </header>
+
+      <section id="view-live" class="page view active-view">
+        <div class="hero-row">
+          <div><div class="eyebrow">GOVERNED AGENT RUN</div><h1>Watch one HR request cross identity, policy, MCP, product adapter and AI.</h1><p>Every station below is driven by execution events from the live BCS ONE request path.</p></div>
+          <div class="hero-status"><span id="run-status" class="status neutral">READY</span><div id="run-request-id" class="mono muted">request: —</div></div>
+        </div>
+
+        <div class="grid two-col">
+          <article class="card">
+            <div class="card-header"><div><div class="card-title">Employee payroll request</div><div class="card-subtitle">Current live synthetic capability</div></div></div>
+            <div class="card-body">
+              <form id="workflow-form" class="form-grid">
+                <label>Employee ID<input id="employee-id" value="EMP-1001" autocomplete="off" /></label>
+                <label>Period<input id="period" value="2026-08" autocomplete="off" /></label>
+                <label class="check-row"><input id="explain" type="checkbox" checked /><span>Generate grounded AI explanation</span></label>
+                <div class="form-actions"><button class="button primary" type="submit">Run live workflow</button><button id="clear-run" class="button secondary" type="button">Clear</button></div>
+                <div id="workflow-error" class="form-error" aria-live="polite"></div>
+              </form>
+            </div>
+          </article>
+          <article class="card governance-card">
+            <div class="card-header"><div><div class="card-title">Identity & governance</div><div class="card-subtitle">Trusted context, never model supplied</div></div></div>
+            <div class="card-body key-values">
+              <span>Authentication</span><strong>Microsoft Entra ID</strong>
+              <span>Role</span><strong id="role-value">—</strong>
+              <span>Policy decision</span><strong id="policy-value">Waiting</strong>
+              <span>Purpose</span><strong id="purpose-value">—</strong>
+              <span>Data mode</span><strong>SYNTHETIC</strong>
+            </div>
+          </article>
+        </div>
+
+        <article class="card metro-card">
+          <div class="card-header"><div><div class="card-title">Execution metro</div><div class="card-subtitle">Live correlated workflow stages</div></div><div id="run-duration" class="mono muted">0 ms</div></div>
+          <div class="card-body">
+            <div class="metro-wrap"><div class="metro-track"><div class="metro-line"></div><div id="metro-progress" class="metro-progress"></div>
+              <button class="metro-station" data-stage="identity"><span class="metro-dot">1</span><b>Entra</b><small>Identity</small></button>
+              <button class="metro-station" data-stage="gateway"><span class="metro-dot">2</span><b>Gateway</b><small>JWT + context</small></button>
+              <button class="metro-station" data-stage="policy"><span class="metro-dot">3</span><b>OPA</b><small>Authorization</small></button>
+              <button class="metro-station" data-stage="orchestrator"><span class="metro-dot">4</span><b>Agent</b><small>Orchestration</small></button>
+              <button class="metro-station" data-stage="mcp"><span class="metro-dot">5</span><b>MCP</b><small>Tool contract</small></button>
+              <button class="metro-station" data-stage="adapter"><span class="metro-dot">6</span><b>Adapter</b><small>Product bridge</small></button>
+              <button class="metro-station" data-stage="source"><span class="metro-dot">7</span><b>Payroll</b><small>Authoritative facts</small></button>
+              <button class="metro-station" data-stage="ai"><span class="metro-dot">8</span><b>Azure AI</b><small>Grounded explain</small></button>
+            </div></div>
+            <div id="station-detail" class="station-detail">Select a station to inspect its responsibility.</div>
+          </div>
+        </article>
+
+        <div class="grid three-col">
+          <article class="card"><div class="card-header"><div class="card-title">Authoritative facts</div></div><div id="facts-panel" class="card-body empty-state">Run the workflow to load payroll facts.</div></article>
+          <article class="card"><div class="card-header"><div class="card-title">Grounded AI response</div></div><div id="ai-panel" class="card-body empty-state">AI has not been invoked.</div></article>
+          <article class="card"><div class="card-header"><div class="card-title">Provenance</div></div><div id="provenance-panel" class="card-body empty-state">Source evidence will appear here.</div></article>
+        </div>
+
+        <article class="card trace-card"><div class="card-header"><div><div class="card-title">Real-time trace</div><div class="card-subtitle">Request-correlated events surfaced for demonstration</div></div><span id="event-count" class="counter">0 events</span></div><div class="card-body"><div id="trace-table" class="trace-table"><div class="empty-state">No trace events yet.</div></div></div></article>
+      </section>
+
+      <section id="view-mcp" class="page view">
+        <div class="hero-row"><div><div class="eyebrow">MODEL CONTEXT PROTOCOL</div><h1>BCS ONE Capability Hub</h1><p>Discover canonical capabilities without coupling the agent to individual BCS products.</p></div><button id="refresh-tools" class="button secondary">Refresh tools/list</button></div>
+        <div class="metric-grid"><div class="metric"><span>Tools discovered</span><strong id="metric-tools">—</strong></div><div class="metric"><span>Live tools</span><strong id="metric-live">—</strong></div><div class="metric"><span>Mapped products</span><strong id="metric-products">—</strong></div><div class="metric"><span>Protocol</span><strong>2026-07-28</strong></div></div>
+        <article class="card"><div class="card-header"><div><div class="card-title">Capability catalog</div><div class="card-subtitle">Data comes from the deployed MCP server tools/list response</div></div><input id="tool-search" class="search-input" placeholder="Search payroll, leave, Timegrip…" /></div><div id="tool-grid" class="card-body tool-grid"><div class="empty-state">Sign in and refresh to discover MCP tools.</div></div></article>
+      </section>
+
+      <section id="view-products" class="page view">
+        <div class="hero-row"><div><div class="eyebrow">BCS PRODUCT FEDERATION</div><h1>One employee journey, multiple specialist products.</h1><p>The canonical MCP layer keeps the agent stable while adapters connect BCS and acquired product capabilities.</p></div><span class="status info">PORTFOLIO MAP</span></div>
+        <div id="product-grid" class="product-grid"></div>
+      </section>
+
+      <section id="view-observability" class="page view">
+        <div class="hero-row"><div><div class="eyebrow">OBSERVABILITY</div><h1>Evidence for every AI and MCP execution step.</h1><p>Use the request ID to correlate identity, policy, MCP, adapter, source and model activity.</p></div><span id="obs-health" class="status neutral">NO RUN</span></div>
+        <div class="metric-grid"><div class="metric"><span>Last duration</span><strong id="obs-duration">—</strong></div><div class="metric"><span>Trace events</span><strong id="obs-events">0</strong></div><div class="metric"><span>MCP tools used</span><strong id="obs-tools">0</strong></div><div class="metric"><span>Policy</span><strong id="obs-policy">—</strong></div></div>
+        <div class="grid two-col"><article class="card"><div class="card-header"><div><div class="card-title">Stage latency</div><div class="card-subtitle">Observed from the latest run</div></div></div><div id="latency-list" class="card-body latency-list"><div class="empty-state">Run a workflow first.</div></div></article><article class="card"><div class="card-header"><div><div class="card-title">Run evidence</div><div class="card-subtitle">Safe operational metadata</div></div></div><div id="evidence-list" class="card-body key-values"><span>Request ID</span><strong>—</strong><span>Source</span><strong>—</strong><span>AI invoked</span><strong>—</strong><span>Result</span><strong>—</strong></div></article></div>
+      </section>
+    </main>
+  </div>
+  <script src="/config.js"></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>
