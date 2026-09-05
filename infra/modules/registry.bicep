@@ -12,11 +12,11 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   sku: { name: 'Basic' }
   properties: {
     adminUserEnabled: false
-    anonymousPullEnabled: false
     publicNetworkAccess: 'Enabled'
   }
 }
 
+// Anonymous pull remains disabled by default; no preview-only property is required.
 // AcrPull is assigned in scripts/bootstrap-rbac.sh by a privileged bootstrap identity.
 // Normal GitHub deployment identity remains Contributor-only.
 output name string = acr.name
