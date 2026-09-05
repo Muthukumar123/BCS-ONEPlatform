@@ -16,6 +16,13 @@ param azureOpenAIModelDeployment string
 param entraTenantId string
 param entraApiAudience string
 param entraConsoleClientId string
+param postgresFqdn string
+
+@secure()
+param postgresAdminPassword string
+
+@secure()
+param postgresRuntimePassword string
 
 param tags object = {
   system: 'bcs-one'
@@ -40,6 +47,9 @@ module apps './modules/apps.bicep' = {
     entraTenantId: entraTenantId
     entraApiAudience: entraApiAudience
     entraConsoleClientId: entraConsoleClientId
+    postgresFqdn: postgresFqdn
+    postgresAdminPassword: postgresAdminPassword
+    postgresRuntimePassword: postgresRuntimePassword
     tags: tags
   }
 }
@@ -48,3 +58,5 @@ output gatewayFqdn string = apps.outputs.gatewayFqdn
 output gatewayUrl string = 'https://${apps.outputs.gatewayFqdn}'
 output consoleFqdn string = apps.outputs.consoleFqdn
 output consoleUrl string = 'https://${apps.outputs.consoleFqdn}'
+output dbMigratorJobName string = apps.outputs.dbMigratorJobName
+output evalRunnerJobName string = apps.outputs.evalRunnerJobName
