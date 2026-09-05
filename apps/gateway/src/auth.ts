@@ -40,6 +40,11 @@ function jwksForTenant(tenantId: string) {
   return cachedJwks;
 }
 
+function hasRequiredScope(scopeClaim: unknown, requiredScope: string): boolean {
+  if (typeof scopeClaim !== 'string') return false;
+  return scopeClaim.split(/\s+/).filter(Boolean).includes(requiredScope);
+}
+
 export async function authenticate(req: Request): Promise<AuthResult> {
   if (process.env.ALLOW_DEV_HEADERS === 'true') {
     return devHeaders(req);
@@ -47,6 +52,7 @@ export async function authenticate(req: Request): Promise<AuthResult> {
 
   const tenantId = process.env.ENTRA_TENANT_ID;
   const audience = process.env.ENTRA_API_AUDIENCE;
+  const requiredScope = process.env.ENTRA_REQUIRED_SCOPE ?? 'access_as_user';
   if (!tenantId || !audience) {
     return {
       ok: false,
@@ -71,6 +77,15 @@ export async function authenticate(req: Request): Promise<AuthResult> {
 
     if (payload.tid !== tenantId) {
       return { ok: false, status: 403, code: 'TENANT_MISMATCH' };
+    }
+
+    if (!hasRequiredScope(payload.scp, requiredScope)) {
+      return {
+        ok: false,
+        status: 403,
+        code: 'DELEGATED_SCOPE_REQUIRED',
+        message: `The delegated ${requiredScope} scope is required.`
+      };
     }
 
     const roles = Array.isArray(payload.roles)
