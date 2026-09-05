@@ -4,6 +4,7 @@ set -euo pipefail
 : "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
 : "${GITHUB_ORG:=Muthukumar123}"
 : "${GITHUB_REPO:=BCS-ONEPlatform}"
+: "${GITHUB_ENVIRONMENT:=dev}"
 : "${LOCATION:=westeurope}"
 : "${RESOURCE_GROUP:=rg-bcs-one-dev}"
 : "${APP_NAME:=github-bcs-one-platform}"
@@ -11,22 +12,38 @@ set -euo pipefail
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" >/dev/null
 
-APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
+APP_ID=$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv)
+if [[ -z "$APP_ID" ]]; then
+  APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
+fi
+
 OBJECT_ID=$(az ad app show --id "$APP_ID" --query id -o tsv)
-az ad sp create --id "$APP_ID" >/dev/null
+SP_OBJECT_ID=$(az ad sp list --filter "appId eq '$APP_ID'" --query '[0].id' -o tsv)
+if [[ -z "$SP_OBJECT_ID" ]]; then
+  SP_OBJECT_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
+fi
 
 cat > /tmp/bcs-one-fic.json <<JSON
 {
-  "name": "github-main",
+  "name": "github-${GITHUB_ENVIRONMENT}",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/main",
-  "description": "GitHub Actions OIDC for BCS ONE main branch",
+  "subject": "repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}",
+  "description": "GitHub Actions OIDC for BCS ONE ${GITHUB_ENVIRONMENT} environment",
   "audiences": ["api://AzureADTokenExchange"]
 }
 JSON
 
-az ad app federated-credential create --id "$OBJECT_ID" --parameters /tmp/bcs-one-fic.json >/dev/null
-az role assignment create --assignee "$APP_ID" --role Contributor --scope "/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" >/dev/null
+EXISTING_FIC=$(az ad app federated-credential list --id "$OBJECT_ID" --query "[?name=='github-${GITHUB_ENVIRONMENT}'].name | [0]" -o tsv)
+if [[ -z "$EXISTING_FIC" ]]; then
+  az ad app federated-credential create --id "$OBJECT_ID" --parameters /tmp/bcs-one-fic.json >/dev/null
+fi
+
+az role assignment create \
+  --assignee-object-id "$SP_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role Contributor \
+  --scope "/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" \
+  >/dev/null 2>&1 || true
 
 TENANT_ID=$(az account show --query tenantId -o tsv)
 
@@ -37,4 +54,5 @@ echo "AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID"
 echo "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
 echo "AZURE_LOCATION=$LOCATION"
 echo
+echo "GitHub OIDC subject: repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}"
 echo "Add POSTGRES_ADMIN_PASSWORD as a GitHub Actions secret."
