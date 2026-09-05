@@ -32,12 +32,14 @@ jobs:
           BCS_TENANT_ID: ${{ vars.BCS_ENTRA_TENANT_ID }}
           BCS_AUDIENCE: ${{ vars.BCS_ENTRA_API_AUDIENCE }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
         run: |
           test -n "$OPENAI_ENDPOINT" || { echo 'AZURE_OPENAI_ENDPOINT is required'; exit 1; }
           test -n "$OPENAI_DEPLOYMENT" || { echo 'AZURE_OPENAI_MODEL_DEPLOYMENT is required'; exit 1; }
           test -n "$BCS_TENANT_ID" || { echo 'BCS_ENTRA_TENANT_ID is required'; exit 1; }
           test -n "$BCS_AUDIENCE" || { echo 'BCS_ENTRA_API_AUDIENCE is required'; exit 1; }
           test -n "$POSTGRES_ADMIN_PASSWORD" || { echo 'POSTGRES_ADMIN_PASSWORD secret is required'; exit 1; }
+          test -n "$AZURE_LOCATION" || { echo 'AZURE_LOCATION is required'; exit 1; }
 
       - name: Deploy Azure foundation
         env:
@@ -67,7 +69,7 @@ jobs:
       - name: Verify privileged RBAC bootstrap
         run: |
           count=$(az role assignment list \
-            --assignee "${{ steps.foundation.outputs.identity_principal_id }}" \
+            --assignee-object-id "${{ steps.foundation.outputs.identity_principal_id }}" \
             --scope "${{ steps.foundation.outputs.acr_id }}" \
             --query "[?roleDefinitionName=='AcrPull'] | length(@)" -o tsv)
           if [[ "$count" == "0" ]]; then
@@ -93,6 +95,7 @@ jobs:
             --template-file infra/apps.bicep \
             --parameters \
               environment="$ENVIRONMENT" \
+              location="${{ vars.AZURE_LOCATION }}" \
               imageTag="$GITHUB_SHA" \
               containerAppsEnvironmentId="${{ steps.foundation.outputs.cae_id }}" \
               acrLoginServer="${{ steps.foundation.outputs.acr_login }}" \
