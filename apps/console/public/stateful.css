@@ -1,0 +1,208 @@
+.runs-layout {
+  grid-template-columns: minmax(340px, .82fr) minmax(0, 1.55fr);
+}
+
+.run-list,
+.eval-list,
+.artifact-list,
+.mini-events {
+  display: grid;
+  gap: 8px;
+}
+
+.run-row {
+  width: 100%;
+  min-height: 68px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background .15s ease;
+}
+
+.run-row:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.run-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.run-row > div:last-child {
+  justify-items: end;
+}
+
+.run-row strong,
+.artifact-row strong,
+.eval-row strong {
+  overflow-wrap: anywhere;
+}
+
+.run-row small,
+.artifact-row small,
+.eval-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.run-inspector {
+  display: grid;
+  gap: 16px;
+}
+
+.run-inspector h4 {
+  margin: 4px 0 -5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+
+.artifact-row {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 10px;
+  min-height: 54px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.artifact-row > div {
+  min-width: 0;
+}
+
+.artifact-row strong {
+  display: block;
+  font-size: 11px;
+}
+
+.mini-events {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+.mini-events > div {
+  min-width: 650px;
+  display: grid;
+  grid-template-columns: 52px 92px minmax(180px, 1fr) 72px;
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.mini-events > div:last-child {
+  border-bottom: 0;
+}
+
+.mini-events b {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: .05em;
+}
+
+.mini-events span:nth-child(3),
+.mini-events small {
+  color: var(--text-soft);
+}
+
+.mini-events small {
+  text-align: right;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.eval-list {
+  gap: 10px;
+}
+
+.eval-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) 110px 140px 100px;
+  gap: 16px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.eval-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.eval-row > div:nth-child(n+2) {
+  justify-items: end;
+}
+
+.eval-score b {
+  font-size: 20px;
+  letter-spacing: -.03em;
+}
+
+#eval-status,
+#eval-hard-failures,
+#runs-exception {
+  overflow-wrap: anywhere;
+}
+
+/* State and evaluation views intentionally surface metadata and artifact references,
+   not hidden model reasoning or unrestricted HR payloads. */
+@media (max-width: 1150px) {
+  .runs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .eval-row {
+    grid-template-columns: minmax(220px, 1.4fr) 90px 120px 90px;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 800px) {
+  .run-row {
+    grid-template-columns: 1fr;
+  }
+
+  .run-row > div:last-child {
+    justify-items: start;
+  }
+
+  .eval-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .eval-row > div:nth-child(n+2) {
+    justify-items: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .eval-row {
+    grid-template-columns: 1fr;
+  }
+}
