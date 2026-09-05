@@ -11,6 +11,10 @@ env:
   ENVIRONMENT: dev
   FOUNDATION_DEPLOYMENT: bcs-one-foundation-dev
   APPS_DEPLOYMENT: bcs-one-apps-dev
+  # Public OAuth client IDs are identifiers, not secrets. Prefer the repository variable
+  # when present, but keep the existing pilot client as the dev fallback so release is
+  # not blocked by a missing GitHub variable.
+  CONSOLE_CLIENT_ID: ${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID || '9a0eeb37-dede-48ca-b740-0cf9ae7f016b' }}
 
 jobs:
   release:
@@ -31,7 +35,6 @@ jobs:
           OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}
           BCS_TENANT_ID: ${{ vars.BCS_ENTRA_TENANT_ID }}
           BCS_AUDIENCE: ${{ vars.BCS_ENTRA_API_AUDIENCE }}
-          CONSOLE_CLIENT_ID: ${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
         run: |
@@ -39,7 +42,7 @@ jobs:
           test -n "$OPENAI_DEPLOYMENT" || { echo 'AZURE_OPENAI_MODEL_DEPLOYMENT is required'; exit 1; }
           test -n "$BCS_TENANT_ID" || { echo 'BCS_ENTRA_TENANT_ID is required'; exit 1; }
           test -n "$BCS_AUDIENCE" || { echo 'BCS_ENTRA_API_AUDIENCE is required'; exit 1; }
-          test -n "$CONSOLE_CLIENT_ID" || { echo 'BCS_ENTRA_CONSOLE_CLIENT_ID is required'; exit 1; }
+          test -n "$CONSOLE_CLIENT_ID" || { echo 'Console Entra client ID is required'; exit 1; }
           test -n "$POSTGRES_ADMIN_PASSWORD" || { echo 'POSTGRES_ADMIN_PASSWORD secret is required'; exit 1; }
           test -n "$AZURE_LOCATION" || { echo 'AZURE_LOCATION is required'; exit 1; }
 
@@ -64,6 +67,7 @@ jobs:
           echo "acr_login=$(jq -r '.containerRegistry.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "acr_id=$(jq -r '.containerRegistryId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "cae_id=$(jq -r '.containerAppsEnvironmentId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "cae_domain=$(jq -r '.containerAppsDefaultDomain.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "identity_id=$(jq -r '.workloadIdentityResourceId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "identity_client_id=$(jq -r '.workloadIdentityClientId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
           echo "identity_principal_id=$(jq -r '.workloadIdentityPrincipalId.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
@@ -108,18 +112,52 @@ jobs:
               azureOpenAIModelDeployment="${{ vars.AZURE_OPENAI_MODEL_DEPLOYMENT }}" \
               entraTenantId="${{ vars.BCS_ENTRA_TENANT_ID }}" \
               entraApiAudience="${{ vars.BCS_ENTRA_API_AUDIENCE }}" \
-              entraConsoleClientId="${{ vars.BCS_ENTRA_CONSOLE_CLIENT_ID }}"
+              entraConsoleClientId="$CONSOLE_CLIENT_ID"
 
-      - name: Publish live endpoints
+      - name: Read application outputs
+        id: apps
         run: |
           outputs=$(az deployment group show \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "$APPS_DEPLOYMENT" \
             --query 'properties.outputs' -o json)
-          gateway_url=$(jq -r '.gatewayUrl.value' <<< "$outputs")
-          console_url=$(jq -r '.consoleUrl.value' <<< "$outputs")
+          echo "gateway_url=$(jq -r '.gatewayUrl.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+          echo "console_url=$(jq -r '.consoleUrl.value' <<< "$outputs")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify live health endpoints
+        run: |
+          gateway_url="${{ steps.apps.outputs.gateway_url }}"
+          console_url="${{ steps.apps.outputs.console_url }}"
+
+          retry_curl() {
+            local url="$1"
+            local attempts=18
+            local delay=5
+            for i in $(seq 1 "$attempts"); do
+              if curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$url"; then
+                echo
+                return 0
+              fi
+              echo "Waiting for $url ($i/$attempts)..."
+              sleep "$delay"
+            done
+            return 1
+          }
+
+          retry_curl "$gateway_url/healthz"
+          retry_curl "$console_url/healthz"
+
+          config=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$console_url/config.js")
+          grep -Fq "$CONSOLE_CLIENT_ID" <<< "$config" || { echo 'Console config does not contain the expected Entra client ID'; exit 1; }
+          grep -Fq "$gateway_url" <<< "$config" || { echo 'Console config does not contain the deployed Gateway URL'; exit 1; }
+
+      - name: Publish live endpoints
+        run: |
+          gateway_url="${{ steps.apps.outputs.gateway_url }}"
+          console_url="${{ steps.apps.outputs.console_url }}"
           echo "### BCS ONE live dev pilot" >> "$GITHUB_STEP_SUMMARY"
           echo "Gateway: $gateway_url" >> "$GITHUB_STEP_SUMMARY"
           echo "Console: $console_url" >> "$GITHUB_STEP_SUMMARY"
           echo "Console redirect URI: $console_url/auth/callback" >> "$GITHUB_STEP_SUMMARY"
+          echo "Console Entra client: $CONSOLE_CLIENT_ID" >> "$GITHUB_STEP_SUMMARY"
           echo "Image tag: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
