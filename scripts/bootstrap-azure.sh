@@ -12,6 +12,31 @@ set -euo pipefail
 : "${APP_NAME:=github-bcs-one-platform}"
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+
+# The first deployment on a fresh subscription can fail when required resource
+# providers are not registered. Register only the namespaces used by BCS ONE.
+REQUIRED_PROVIDERS=(
+  Microsoft.Network
+  Microsoft.OperationalInsights
+  Microsoft.Insights
+  Microsoft.ManagedIdentity
+  Microsoft.ContainerRegistry
+  Microsoft.KeyVault
+  Microsoft.ServiceBus
+  Microsoft.Storage
+  Microsoft.DBforPostgreSQL
+  Microsoft.App
+  Microsoft.CognitiveServices
+)
+
+for provider in "${REQUIRED_PROVIDERS[@]}"; do
+  state=$(az provider show --namespace "$provider" --query registrationState -o tsv 2>/dev/null || true)
+  if [[ "$state" != "Registered" ]]; then
+    echo "Registering Azure resource provider: $provider"
+    az provider register --namespace "$provider" --wait
+  fi
+done
+
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" >/dev/null
 
 APP_ID=$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv)
