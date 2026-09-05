@@ -12,7 +12,7 @@ const publicDir = path.resolve(__dirname, '../public');
 const indexPath = path.join(publicDir, 'index.html');
 const indexHtml = (await readFile(indexPath, 'utf8')).replace(
   '</head>',
-  '  <link rel="stylesheet" href="/stateful.css" />\n</head>'
+  '  <link rel="stylesheet" href="/stateful.css" />\n  <link rel="stylesheet" href="/scenario.css" />\n</head>'
 );
 
 app.disable('x-powered-by');
