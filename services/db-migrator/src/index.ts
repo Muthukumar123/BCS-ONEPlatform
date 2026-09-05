@@ -33,8 +33,10 @@ const client = new Client({
 });
 
 async function main() {
+  console.log(`Connecting to PostgreSQL ${host}:${port}/${database} as ${adminUser}`);
   await client.connect();
   try {
+    console.log('Ensuring restricted BCS ONE runtime role exists');
     await client.query(`
       do $$ begin
         if not exists (select 1 from pg_roles where rolname = 'bcsone_runtime') then
@@ -43,11 +45,17 @@ async function main() {
       end $$;
     `);
 
+    // PostgreSQL cannot infer the type of a bind parameter used only as a
+    // variadic format() argument. Cast it explicitly before %L quotes it.
+    // The password remains a bound value and is never interpolated in Node.
+    console.log('Rotating BCS ONE runtime database credential');
     const passwordDdl = await client.query<{ ddl: string }>(
-      `select format('alter role bcsone_runtime password %L', $1) as ddl`,
+      `select format('alter role bcsone_runtime password %L', $1::text) as ddl`,
       [runtimePassword]
     );
-    await client.query(passwordDdl.rows[0].ddl);
+    const ddl = passwordDdl.rows[0]?.ddl;
+    if (!ddl) throw new Error('Failed to construct runtime role credential rotation statement');
+    await client.query(ddl);
 
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const migrationsDir = path.resolve(__dirname, '../migrations');
