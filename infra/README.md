@@ -45,7 +45,7 @@ Shared Azure services:
 ```bash
 az login
 az account set --subscription <subscription-id>
-az group create -n rg-bcs-one-dev -l westeurope
+az group create -n rg-bcs-one-dev -l swedencentral
 
 az deployment group what-if \
   -g rg-bcs-one-dev \

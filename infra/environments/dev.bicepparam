@@ -1,5 +1,5 @@
 using '../main.bicep'
 
 param environment = 'dev'
-param location = 'westeurope'
+param location = 'swedencentral'
 param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')

@@ -43,7 +43,7 @@ From Azure Cloud Shell or another authenticated Azure CLI environment:
 
 ```bash
 export AZURE_SUBSCRIPTION_ID='<subscription-id>'
-export LOCATION='westeurope'
+export LOCATION='swedencentral'
 export RESOURCE_GROUP='rg-bcs-one-dev'
 ./scripts/bootstrap-azure.sh
 ```

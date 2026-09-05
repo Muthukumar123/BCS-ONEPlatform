@@ -7,7 +7,7 @@ set -euo pipefail
 : "${GITHUB_REPO:=BCS-ONEPlatform}"
 : "${GITHUB_REPO_ID:=1356417496}"
 : "${GITHUB_ENVIRONMENT:=dev}"
-: "${LOCATION:=westeurope}"
+: "${LOCATION:=swedencentral}"
 : "${RESOURCE_GROUP:=rg-bcs-one-dev}"
 : "${APP_NAME:=github-bcs-one-platform}"
 
