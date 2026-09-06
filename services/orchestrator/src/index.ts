@@ -6,6 +6,7 @@ import { executePayrollGraph } from './graph.js';
 import { executeScenarioGraph } from './scenario-graph.js';
 import { publicScenario, scenarioById, scenarios } from './scenarios.js';
 import { RuntimePersistence } from './persistence.js';
+import { searchSyntheticWorkforce, syntheticEmployeeById, workforceOverview } from './synthetic-workforce.js';
 import type { SecurityContext } from './runtime-types.js';
 
 const app = express();
@@ -33,6 +34,12 @@ const ScenarioRequestSchema = z.object({
   threadId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional()
 }).strict();
 
+const WorkforceQuerySchema = z.object({
+  q: z.string().max(80).optional(),
+  employerId: z.string().max(32).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(12)
+});
+
 app.use(express.json({ limit: '256kb' }));
 app.get('/healthz', (_req, res) => res.json({
   status: 'ok',
@@ -50,6 +57,10 @@ function securityContext(req: express.Request): SecurityContext | undefined {
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
   if (!tenantId || !userId || roles.length === 0) return undefined;
   return { tenantId, userId, roles, purpose, requestId };
+}
+
+function canBrowseWorkforce(context: SecurityContext): boolean {
+  return context.roles.includes('hr') || context.roles.includes('payroll');
 }
 
 function parseRequest(body: unknown) {
@@ -89,6 +100,37 @@ app.get('/v1/scenarios', (req, res) => {
       dataMode: 'SYNTHETIC'
     }
   });
+});
+
+app.get('/v1/workforce/overview', (req, res) => {
+  const context = securityContext(req);
+  if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
+  if (!canBrowseWorkforce(context)) return res.status(403).json({ code: 'WORKFORCE_DIRECTORY_FORBIDDEN', requestId: context.requestId });
+  return res.json({ requestId: context.requestId, ...workforceOverview() });
+});
+
+app.get('/v1/workforce/employees', (req, res) => {
+  const context = securityContext(req);
+  if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
+  if (!canBrowseWorkforce(context)) return res.status(403).json({ code: 'WORKFORCE_DIRECTORY_FORBIDDEN', requestId: context.requestId });
+  const parsed = WorkforceQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ code: 'VALIDATION_ERROR', issues: parsed.error.issues, requestId: context.requestId });
+  const employees = searchSyntheticWorkforce({
+    tenantId: context.tenantId,
+    employerId: parsed.data.employerId,
+    query: parsed.data.q,
+    limit: parsed.data.limit
+  });
+  return res.json({ requestId: context.requestId, dataMode: 'SYNTHETIC', employees });
+});
+
+app.get('/v1/workforce/employees/:employeeId', (req, res) => {
+  const context = securityContext(req);
+  if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
+  if (!canBrowseWorkforce(context)) return res.status(403).json({ code: 'WORKFORCE_DIRECTORY_FORBIDDEN', requestId: context.requestId });
+  const employee = syntheticEmployeeById(context.tenantId, req.params.employeeId);
+  if (!employee) return res.status(404).json({ code: 'SYNTHETIC_EMPLOYEE_NOT_FOUND', requestId: context.requestId });
+  return res.json({ requestId: context.requestId, employee });
 });
 
 app.get('/v1/runs', async (req, res) => {
