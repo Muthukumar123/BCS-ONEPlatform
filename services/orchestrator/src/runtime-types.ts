@@ -33,6 +33,12 @@ export type WorkflowEvent = {
   mcpCallTotal?: number;
   inputKeys?: string[];
   outputShape?: string[];
+  aiModel?: string;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  estimatedAiCostUsd?: number;
   payload?: unknown;
 };
 
