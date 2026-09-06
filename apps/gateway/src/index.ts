@@ -2,6 +2,18 @@ import express from 'express';
 import pino from 'pino';
 import { authenticate } from './auth.js';
 
+/**
+ * BCS ONE external API gateway.
+ *
+ * Security boundary:
+ * - Browser/API callers present an Entra bearer token.
+ * - The gateway validates that token and derives trusted tenant/user/role data.
+ * - Downstream services receive internal `x-bcs-*` headers created here; those
+ *   headers are not accepted as the production identity authority from callers.
+ * - Request IDs are created/reused at this edge so policy, MCP, artifacts and AI
+ *   telemetry can be correlated without logging sensitive business payloads.
+ */
+
 const app = express();
 const log = pino({ name: 'gateway' });
 const port = Number(process.env.PORT ?? 3000);
@@ -22,10 +34,15 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '256kb' }));
 app.get('/healthz', (_req, res) => res.json({ status: 'ok', service: 'gateway' }));
 
+/** Map authenticated application roles to an explicit business purpose. */
 function purposeForRoles(roles: string[]): string {
   return roles.includes('payroll') ? 'payroll-processing' : roles.includes('hr') ? 'hr-service' : 'self-service';
 }
 
+/**
+ * Construct the only security-context headers trusted by the internal runtime.
+ * Never populate these values from request body/model/tool arguments.
+ */
 function trustedHeaders(context: { tenantId: string; userId: string; roles: string[] }, purpose: string, requestId: string) {
   return {
     'x-bcs-tenant-id': context.tenantId,
@@ -36,6 +53,7 @@ function trustedHeaders(context: { tenantId: string; userId: string; roles: stri
   };
 }
 
+/** Authenticated GET proxy used for tenant-scoped read APIs. */
 async function proxyGet(req: express.Request, res: express.Response, upstreamPath: string) {
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
   const auth = await authenticate(req);
@@ -55,6 +73,7 @@ async function proxyGet(req: express.Request, res: express.Response, upstreamPat
   }
 }
 
+/** Authenticated request/response proxy for non-streaming workflow calls. */
 async function proxyPost(req: express.Request, res: express.Response, upstreamPath: string, timeoutMs = 45_000) {
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
   const auth = await authenticate(req);
@@ -75,6 +94,13 @@ async function proxyPost(req: express.Request, res: express.Response, upstreamPa
   }
 }
 
+/**
+ * Stream a governed workflow to the browser using Server-Sent Events.
+ *
+ * The gateway emits the edge/identity/context events itself, then transparently
+ * forwards orchestrator events. This lets the UI explain the complete request
+ * path while keeping authentication at the edge rather than inside the model.
+ */
 async function proxyStream(req: express.Request, res: express.Response, upstreamPath: string) {
   const startedAt = Date.now();
   const requestId = req.header('x-request-id') ?? crypto.randomUUID();
@@ -139,6 +165,7 @@ async function proxyStream(req: express.Request, res: express.Response, upstream
   }
 }
 
+// Read APIs: all remain behind Entra authentication and the trusted gateway context.
 app.get('/v1/mcp/tools', (req, res) => void proxyGet(req, res, '/v1/mcp/tools'));
 app.get('/v1/scenarios', (req, res) => void proxyGet(req, res, '/v1/scenarios'));
 app.get('/v1/workforce/overview', (req, res) => void proxyGet(req, res, '/v1/workforce/overview'));
@@ -150,9 +177,11 @@ app.get('/v1/runs/:runId', (req, res) => void proxyGet(req, res, `/v1/runs/${enc
 app.get('/v1/runs/:runId/artifacts/:artifactId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}/artifacts/${encodeURIComponent(req.params.artifactId)}`));
 app.get('/v1/evaluations', (req, res) => void proxyGet(req, res, '/v1/evaluations'));
 
+// Workflow APIs: the gateway keeps authentication outside the agent/orchestrator runtime.
 app.post('/v1/scenarios/:scenarioId', (req, res) => void proxyPost(req, res, `/v1/scenarios/${encodeURIComponent(req.params.scenarioId)}`));
 app.post('/v1/scenarios/:scenarioId/stream', (req, res) => void proxyStream(req, res, `/v1/scenarios/${encodeURIComponent(req.params.scenarioId)}/stream`));
 
+// Backward-compatible payroll endpoint retained for API consumers and regression tests.
 app.post('/v1/employee-summary', (req, res) => void proxyPost(req, res, '/v1/employee-summary', 30_000));
 app.post('/v1/employee-summary/stream', (req, res) => void proxyStream(req, res, '/v1/employee-summary/stream'));
 
