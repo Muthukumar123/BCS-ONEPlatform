@@ -1,6 +1,7 @@
 begin;
 
 alter table bcs_state.execution_events
+  add column if not exists capability text,
   add column if not exists ai_model text,
   add column if not exists input_tokens integer,
   add column if not exists cached_input_tokens integer,
