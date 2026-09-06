@@ -141,6 +141,9 @@ async function proxyStream(req: express.Request, res: express.Response, upstream
 
 app.get('/v1/mcp/tools', (req, res) => void proxyGet(req, res, '/v1/mcp/tools'));
 app.get('/v1/scenarios', (req, res) => void proxyGet(req, res, '/v1/scenarios'));
+app.get('/v1/workforce/overview', (req, res) => void proxyGet(req, res, '/v1/workforce/overview'));
+app.get('/v1/workforce/employees', (req, res) => void proxyGet(req, res, '/v1/workforce/employees'));
+app.get('/v1/workforce/employees/:employeeId', (req, res) => void proxyGet(req, res, `/v1/workforce/employees/${encodeURIComponent(req.params.employeeId)}`));
 app.get('/v1/runs', (req, res) => void proxyGet(req, res, '/v1/runs'));
 app.get('/v1/runs/:runId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}`));
 app.get('/v1/runs/:runId/artifacts/:artifactId', (req, res) => void proxyGet(req, res, `/v1/runs/${encodeURIComponent(req.params.runId)}/artifacts/${encodeURIComponent(req.params.artifactId)}`));
