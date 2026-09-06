@@ -13,16 +13,21 @@ const log = pino({ name: 'orchestrator' });
 const port = Number(process.env.PORT ?? 3001);
 const persistence = await RuntimePersistence.create();
 
+const PeriodSchema = z.string().regex(
+  /^\d{4}-(0[1-9]|1[0-2])$/,
+  'period must use YYYY-MM with a calendar month from 01 through 12'
+);
+
 const RequestSchema = z.object({
   employeeId: z.string().min(1).max(128),
-  period: z.string().regex(/^\d{4}-\d{2}$/),
+  period: PeriodSchema,
   explain: z.boolean().default(false),
   threadId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional()
 }).strict();
 
 const ScenarioRequestSchema = z.object({
   employeeId: z.string().min(1).max(128),
-  period: z.string().regex(/^\d{4}-\d{2}$/),
+  period: PeriodSchema,
   candidateId: z.string().min(1).max(128).optional(),
   explain: z.boolean().default(true),
   threadId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional()
