@@ -1,0 +1,256 @@
+/*
+ * Scenario execution emphasis + sidebar stability.
+ *
+ * This layer intentionally sits after the BCS brand stylesheet. It fixes the
+ * navigation panel overflow/collapse edge cases and makes the execution control
+ * the clear primary action in Scenario Lab without changing runtime behaviour.
+ */
+:root{
+  --run-indigo:#172b69;
+  --run-blue:#2858d8;
+  --run-violet:#6b4fd3;
+  --run-cyan:#238ebf;
+  --run-teal:#167c6b;
+  --run-warm:#fff6e9;
+  --run-warm-border:#e6a95c;
+}
+
+/* Sidebar: keep header/footer stable and make only the menu scroll when needed. */
+.sidebar{
+  overflow:hidden!important;
+  min-height:0!important;
+}
+.sidebar .nav{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  padding:0 4px 10px 0!important;
+  scrollbar-width:thin;
+  scrollbar-color:#c6cfdd transparent;
+}
+.sidebar .nav::-webkit-scrollbar{width:7px}
+.sidebar .nav::-webkit-scrollbar-thumb{background:#c6cfdd;border-radius:999px}
+.sidebar .nav::-webkit-scrollbar-track{background:transparent}
+.sidebar-footer{flex:0 0 auto!important;background:rgba(255,255,255,.98)!important;position:relative!important;z-index:2!important}
+.ux-sidebar-collapse{
+  right:8px!important;
+  top:14px!important;
+  width:32px!important;
+  height:32px!important;
+  border-radius:10px!important;
+}
+.nav-item{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+body.ux-sidebar-collapsed .bcs-brand-spectrum{display:none!important}
+body.ux-sidebar-collapsed .brand{padding-bottom:12px!important}
+body.ux-sidebar-collapsed .sidebar .nav{padding-right:0!important}
+
+/*
+ * Scenario layout: the execution panel has a predictable usable width. At
+ * medium widths we stack it instead of squeezing a sticky right-hand panel.
+ */
+.scenario-layout{
+  grid-template-columns:minmax(0,1.38fr) minmax(410px,.62fr)!important;
+  align-items:start!important;
+}
+
+/* Primary execution control: intentionally stronger than ordinary cards. */
+.run-control{
+  position:sticky!important;
+  top:100px!important;
+  border:2px solid #6676d9!important;
+  border-radius:24px!important;
+  box-shadow:0 5px 14px rgba(23,43,105,.08),0 24px 56px rgba(50,66,151,.15)!important;
+  background:#fff!important;
+  isolation:isolate;
+}
+.run-control::before{
+  content:"";
+  position:absolute;
+  inset:-2px -2px auto;
+  height:7px;
+  border-radius:24px 24px 0 0;
+  background:linear-gradient(90deg,var(--run-blue),var(--run-violet),#b04f9c,#c56a3b,var(--run-teal),var(--run-cyan));
+  z-index:3;
+  pointer-events:none;
+}
+.run-control .bcs-execution-header{
+  min-height:96px!important;
+  align-items:flex-start!important;
+  padding:23px 22px 18px!important;
+  background:linear-gradient(135deg,var(--run-indigo) 0%,#25489f 58%,#5545af 100%)!important;
+  border-bottom:0!important;
+  position:relative;
+  overflow:hidden;
+}
+.run-control .bcs-execution-header::after{
+  content:"";
+  position:absolute;
+  width:170px;
+  height:170px;
+  right:-64px;
+  top:-82px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.24),rgba(255,255,255,0) 68%);
+  pointer-events:none;
+}
+.run-control .bcs-execution-kicker{
+  color:#bcd1ff!important;
+  font-size:9px!important;
+  font-weight:900!important;
+  letter-spacing:.14em!important;
+  text-transform:uppercase;
+  margin-bottom:5px;
+}
+.run-control .card-title{
+  color:#fff!important;
+  font-size:18px!important;
+  line-height:1.2!important;
+  letter-spacing:-.025em!important;
+}
+.run-control .card-subtitle{
+  color:#dbe5ff!important;
+  font-size:11.5px!important;
+  margin-top:5px!important;
+}
+.bcs-execution-live{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+  padding:5px 9px;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:999px;
+  background:rgba(255,255,255,.12);
+  color:#fff;
+  font-size:9.5px;
+  font-weight:850;
+  letter-spacing:.06em;
+  white-space:nowrap;
+  position:relative;
+  z-index:1;
+}
+.bcs-execution-live::before{content:"";width:7px;height:7px;border-radius:50%;background:#55d89d;box-shadow:0 0 0 4px rgba(85,216,157,.15)}
+
+.bcs-execution-strip{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:1px;
+  background:#d9e0ef;
+  border-bottom:1px solid #d9e0ef;
+}
+.bcs-execution-strip span{
+  min-height:54px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:1px;
+  padding:8px 10px;
+  background:#f7f9fe;
+  color:#485574;
+  font-size:9.5px;
+  font-weight:750;
+  line-height:1.3;
+}
+.bcs-execution-strip b{color:var(--run-indigo);font-size:10.5px;font-weight:900}
+.bcs-execution-strip span:nth-child(1){box-shadow:inset 0 3px 0 var(--run-blue)}
+.bcs-execution-strip span:nth-child(2){box-shadow:inset 0 3px 0 var(--run-violet)}
+.bcs-execution-strip span:nth-child(3){box-shadow:inset 0 3px 0 var(--run-teal)}
+.bcs-execution-strip span:nth-child(4){box-shadow:inset 0 3px 0 var(--run-cyan)}
+
+.run-control>.card-body{
+  padding:20px!important;
+  background:linear-gradient(180deg,#f7f8ff 0,#fff 180px)!important;
+}
+.run-control #selected-scenario-value{
+  margin-bottom:16px!important;
+  padding:14px 15px!important;
+  background:var(--run-warm)!important;
+  border:1px solid #f0d4aa!important;
+  border-left:5px solid var(--run-warm-border)!important;
+  color:#5d4325!important;
+  border-radius:14px!important;
+  box-shadow:0 5px 14px rgba(122,83,29,.05)!important;
+}
+.run-control #selected-scenario-value strong{color:#3d2b16!important}
+
+.run-control #scenario-form{
+  gap:11px!important;
+  padding:0!important;
+}
+.run-control #scenario-form>label:not(.check-row){
+  padding:10px 11px 11px!important;
+  border:1px solid #dce2ee!important;
+  border-radius:13px!important;
+  background:#fff!important;
+  color:#364463!important;
+  box-shadow:0 1px 2px rgba(16,24,40,.03)!important;
+}
+.run-control #scenario-form>label:not(.check-row):focus-within{
+  border-color:#7b91e8!important;
+  box-shadow:0 0 0 4px rgba(41,88,216,.08)!important;
+}
+.run-control #scenario-form input:not([type="checkbox"]){
+  margin-top:6px!important;
+  min-height:43px!important;
+  border-color:#cfd7e5!important;
+  background:#fbfcff!important;
+}
+.run-control .check-row{
+  padding:11px 12px!important;
+  border:1px solid #bfe0d8!important;
+  border-radius:13px!important;
+  background:#f1fbf8!important;
+  color:#235d53!important;
+}
+.run-control .check-row span{color:#2e5e56!important;line-height:1.45!important}
+.run-control .form-actions{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:9px!important;
+  margin-top:2px!important;
+}
+.run-control #run-scenario{
+  min-height:54px!important;
+  background:linear-gradient(135deg,var(--run-blue),var(--run-violet))!important;
+  border-color:#4654bd!important;
+  border-radius:14px!important;
+  font-size:14px!important;
+  font-weight:850!important;
+  box-shadow:0 10px 24px rgba(72,75,184,.25)!important;
+}
+.run-control #run-scenario::before{content:"▶";font-size:10px;margin-right:8px}
+.run-control #run-scenario:hover{filter:brightness(1.05)!important;transform:translateY(-1px)!important;box-shadow:0 13px 30px rgba(72,75,184,.30)!important}
+.run-control #clear-run{min-height:54px!important;border-radius:14px!important;background:#fff!important}
+.run-control #workflow-error:not(:empty){
+  min-height:44px!important;
+  padding:10px 12px!important;
+  border:1px solid #efbbb7!important;
+  border-radius:12px!important;
+  background:#fff2f1!important;
+  color:#8e2019!important;
+}
+
+/* Prevent the right execution panel from becoming a narrow/clipped sticky rail. */
+@media(max-width:1280px){
+  .scenario-layout{grid-template-columns:1fr!important}
+  .run-control{position:relative!important;top:auto!important}
+}
+@media(max-width:760px){
+  .bcs-execution-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .run-control .form-actions{grid-template-columns:1fr!important}
+  .run-control #clear-run{min-height:48px!important}
+  .run-control .bcs-execution-header{min-height:auto!important;padding:22px 17px 17px!important}
+  .bcs-execution-live{margin-left:8px}
+}
+
+@media(prefers-contrast:more){
+  .run-control{border-color:var(--run-indigo)!important;border-width:3px!important}
+  .run-control #selected-scenario-value{border-color:#9c5d16!important}
+  .run-control .check-row{border-color:#327466!important}
+}
+@media(forced-colors:active){
+  .run-control,.run-control #selected-scenario-value,.run-control .check-row,.run-control #scenario-form>label:not(.check-row){border:1px solid CanvasText!important}
+  .run-control .bcs-execution-header,.run-control #run-scenario{background:ButtonFace!important;color:ButtonText!important}
+  .bcs-execution-strip span{border:1px solid CanvasText!important}
+}

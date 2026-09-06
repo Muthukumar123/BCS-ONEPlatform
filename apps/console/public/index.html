@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/cto-dashboard.css" />
   <link rel="stylesheet" href="/ux-shell.css" />
   <link rel="stylesheet" href="/bcs-brand-eu.css" />
+  <link rel="stylesheet" href="/scenario-execution-focus.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -57,8 +58,21 @@
             <div id="scenario-grid" class="card-body scenario-grid"><div class="empty-state">Sign in to load executable scenarios.</div></div>
           </article>
 
-          <article class="card run-control">
-            <div class="card-header"><div><div class="card-title">Run selected scenario</div><div id="selected-scenario-mode" class="card-subtitle">Choose a scenario</div></div></div>
+          <article class="card run-control" aria-labelledby="run-control-title">
+            <div class="card-header bcs-execution-header">
+              <div>
+                <div class="bcs-execution-kicker">GOVERNED EXECUTION</div>
+                <div id="run-control-title" class="card-title">Run governed analysis</div>
+                <div id="selected-scenario-mode" class="card-subtitle">Choose a scenario to prepare the governed workflow</div>
+              </div>
+              <span class="bcs-execution-live">LIVE CONTROL</span>
+            </div>
+            <div class="bcs-execution-strip" aria-label="Governed execution safeguards">
+              <span><b>01 · Identity</b>Entra-authenticated user</span>
+              <span><b>02 · Policy</b>OPA authorization</span>
+              <span><b>03 · Federation</b>Canonical MCP calls</span>
+              <span><b>04 · AI</b>Grounded evidence only</span>
+            </div>
             <div class="card-body">
               <div id="selected-scenario-value" class="value-callout">Select a scenario to inspect its business value and planned MCP calls.</div>
               <form id="scenario-form" class="form-grid compact-form">
@@ -67,7 +81,7 @@
                 <label>Candidate ID<input id="candidate-id" value="CAND-1001" autocomplete="off" /></label>
                 <label>Thread ID<input id="thread-id" value="EMP-1001-HR-SCENARIO" autocomplete="off" /></label>
                 <label class="check-row"><input id="explain" type="checkbox" checked /><span>Invoke Azure OpenAI for grounded cross-product synthesis</span></label>
-                <div class="form-actions"><button id="run-scenario" class="button primary" type="submit">Run live scenario</button><button id="clear-run" class="button secondary" type="button">Clear run</button></div>
+                <div class="form-actions"><button id="run-scenario" class="button primary" type="submit">Run governed analysis</button><button id="clear-run" class="button secondary" type="button">Reset</button></div>
                 <div id="workflow-error" class="form-error" aria-live="polite"></div>
               </form>
             </div>
