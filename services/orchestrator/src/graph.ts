@@ -171,8 +171,8 @@ export async function executePayrollGraph(args: {
       artifactId: state.factsArtifactId,
       message: 'Grounded explanation from persisted source facts.'
     });
-    const explanation = await explainGroundedFacts(artifact.payload);
-    if (!explanation) throw new Error('MODEL_RETURNED_NO_EXPLANATION');
+    const explanationResult = await explainGroundedFacts(artifact.payload);
+    if (!explanationResult) throw new Error('MODEL_RETURNED_NO_EXPLANATION');
 
     const explanationArtifactId = await persistence.putArtifact({
       runId,
@@ -183,13 +183,23 @@ export async function executePayrollGraph(args: {
       classification: 'confidential',
       sourceSystem: artifact.sourceSystem,
       capability: 'ai.payroll_explain',
-      payload: { text: explanation, groundedOnArtifactId: state.factsArtifactId }
+      payload: {
+        text: explanationResult.text,
+        groundedOnArtifactId: state.factsArtifactId,
+        usage: explanationResult.usage
+      }
     });
     await emit('ai', 'model.explain.completed', 'completed', {
       agent: 'explanation-agent',
       durationMs: Date.now() - aiStarted,
       artifactId: explanationArtifactId,
-      message: 'Explanation persisted separately from authoritative payroll facts.'
+      aiModel: explanationResult.usage.model,
+      inputTokens: explanationResult.usage.inputTokens,
+      cachedInputTokens: explanationResult.usage.cachedInputTokens,
+      outputTokens: explanationResult.usage.outputTokens,
+      reasoningTokens: explanationResult.usage.reasoningTokens,
+      estimatedAiCostUsd: explanationResult.usage.estimatedCostUsd,
+      message: 'Explanation persisted separately from authoritative payroll facts; token usage is metered for operational economics.'
     });
     return { explanationArtifactId };
   };
