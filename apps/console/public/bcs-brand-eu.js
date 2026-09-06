@@ -102,6 +102,13 @@
         </div>
       </div>`);
 
+    const noResults = document.createElement('div');
+    noResults.className = 'bcs-no-results';
+    noResults.setAttribute('role', 'status');
+    noResults.hidden = true;
+    noResults.textContent = 'No scenarios match this filter. Try another term or choose All.';
+    grid.appendChild(noResults);
+
     $('#bcs-scenario-search')?.addEventListener('input', event => {
       state.scenarioQuery = String(event.target.value || '').trim().toLowerCase();
       applyScenarioFilter();
@@ -116,8 +123,9 @@
       applyScenarioFilter();
     }));
 
-    const observer = new MutationObserver(() => {
-      if (!state.filtering) applyScenarioFilter();
+    const observer = new MutationObserver(mutations => {
+      const cardMutation = mutations.some(mutation => [...mutation.addedNodes, ...mutation.removedNodes].some(node => node.nodeType === 1 && (node.matches?.('.scenario-card') || node.querySelector?.('.scenario-card'))));
+      if (cardMutation && !state.filtering) applyScenarioFilter();
     });
     observer.observe(grid, { childList: true, subtree: true });
     applyScenarioFilter();
@@ -139,10 +147,8 @@
       card.hidden = !show;
       if (show) visible += 1;
     });
-    grid.querySelector('.bcs-no-results')?.remove();
-    if (cards.length && visible === 0) {
-      grid.insertAdjacentHTML('beforeend', '<div class="bcs-no-results" role="status">No scenarios match this filter. Try another term or choose All.</div>');
-    }
+    const noResults = grid.querySelector('.bcs-no-results');
+    if (noResults) noResults.hidden = !(cards.length && visible === 0);
     state.filtering = false;
   }
 
@@ -158,10 +164,18 @@
       modal.setAttribute('aria-describedby', body.id);
     }
 
+    let wasOpen = backdrop.classList.contains('open');
+    let returnFocus = null;
     const sync = () => {
       const open = backdrop.classList.contains('open');
+      if (open && !wasOpen) returnFocus = document.activeElement;
       if (appShell && 'inert' in appShell) appShell.inert = open;
       if (open) modal.setAttribute('tabindex', '-1');
+      if (!open && wasOpen && returnFocus instanceof HTMLElement) {
+        const target = returnFocus;
+        window.setTimeout(() => target.isConnected && target.focus(), 0);
+      }
+      wasOpen = open;
     };
     new MutationObserver(sync).observe(backdrop, { attributes: true, attributeFilter: ['class'] });
     sync();
@@ -211,11 +225,12 @@
       nav.setAttribute('role', 'tablist');
       const sync = () => {
         const buttons = [...nav.querySelectorAll('button')];
+        const hasActive = buttons.some(item => item.classList.contains('active'));
         buttons.forEach((button, index) => {
           const active = button.classList.contains('active');
           button.setAttribute('role', 'tab');
           button.setAttribute('aria-selected', String(active));
-          button.tabIndex = active || (!buttons.some(item => item.classList.contains('active')) && index === 0) ? 0 : -1;
+          button.tabIndex = active || (!hasActive && index === 0) ? 0 : -1;
         });
       };
       nav.addEventListener('keydown', event => {
@@ -258,7 +273,11 @@
     const employee = $('#employee-id');
     if (employee) employee.setAttribute('aria-describedby', 'selected-scenario-value');
     $$('.ux-click-detail').forEach(node => {
-      if (node.matches('tr')) node.setAttribute('tabindex', '0');
+      if (node.matches('tr')) {
+        node.setAttribute('tabindex', '0');
+        node.setAttribute('role', 'button');
+        node.setAttribute('aria-label', `Open details for ${node.innerText.trim().replace(/\s+/g, ' ')}`);
+      }
     });
   }
 
