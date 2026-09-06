@@ -179,14 +179,14 @@ export class RuntimePersistence {
       await client.query(
         `insert into bcs_state.execution_events
           (tenant_id, run_id, request_id, sequence, event_time, stage, event_name, status, agent_name,
-           tool_name, duration_ms, artifact_id, safe_message, node_id, parent_node_id, lane, product_name,
+           tool_name, capability, duration_ms, artifact_id, safe_message, node_id, parent_node_id, lane, product_name,
            source_system, call_id, mcp_call_index, mcp_call_total, input_keys, output_shape,
            ai_model, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, estimated_ai_cost_usd)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
          on conflict (tenant_id, run_id, sequence) do nothing`,
         [
           tenantId, event.runId, event.requestId, event.sequence, event.timestamp, event.stage, event.event, event.status,
-          event.agent ?? null, event.tool ?? null, event.durationMs ?? null, event.artifactId ?? null, event.message ?? null,
+          event.agent ?? null, event.tool ?? null, event.capability ?? null, event.durationMs ?? null, event.artifactId ?? null, event.message ?? null,
           event.nodeId ?? null, event.parentNodeId ?? null, event.lane ?? null, event.product ?? null, event.sourceSystem ?? null,
           event.callId ?? null, event.mcpCallIndex ?? null, event.mcpCallTotal ?? null, event.inputKeys ?? null, event.outputShape ?? null,
           event.aiModel ?? null, event.inputTokens ?? null, event.cachedInputTokens ?? null, event.outputTokens ?? null,
@@ -300,7 +300,7 @@ export class RuntimePersistence {
       );
       if (!runResult.rows[0]) return undefined;
       const eventsResult = await client.query(
-        `select sequence, event_time, stage, event_name, status, agent_name, tool_name, duration_ms, artifact_id, safe_message,
+        `select sequence, event_time, stage, event_name, status, agent_name, tool_name, capability, duration_ms, artifact_id, safe_message,
                 node_id, parent_node_id, lane, product_name, source_system, call_id, mcp_call_index, mcp_call_total, input_keys, output_shape,
                 ai_model, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, estimated_ai_cost_usd
          from bcs_state.execution_events where tenant_id = $1 and run_id = $2 order by sequence`,
@@ -321,6 +321,7 @@ export class RuntimePersistence {
           status: row.status,
           agent: row.agent_name,
           tool: row.tool_name,
+          capability: row.capability,
           durationMs: row.duration_ms,
           artifactId: row.artifact_id,
           message: row.safe_message,
