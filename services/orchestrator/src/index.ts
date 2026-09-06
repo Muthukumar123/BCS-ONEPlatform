@@ -1,6 +1,7 @@
 import express from 'express';
 import pino from 'pino';
 import { z } from 'zod';
+import { aiRuntimeMetadata } from './azure-openai.js';
 import { discoverMcpTools } from './dependencies.js';
 import { executePayrollGraph } from './graph.js';
 import { executeScenarioGraph } from './scenario-graph.js';
@@ -38,6 +39,10 @@ const WorkforceQuerySchema = z.object({
   q: z.string().max(80).optional(),
   employerId: z.string().max(32).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(12)
+});
+
+const DashboardQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(30)
 });
 
 app.use(express.json({ limit: '256kb' }));
@@ -133,6 +138,45 @@ app.get('/v1/workforce/employees/:employeeId', (req, res) => {
   return res.json({ requestId: context.requestId, employee });
 });
 
+app.get('/v1/dashboard/cto', async (req, res) => {
+  const context = securityContext(req);
+  if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
+  if (!canBrowseWorkforce(context)) return res.status(403).json({ code: 'CTO_DASHBOARD_FORBIDDEN', requestId: context.requestId });
+  const parsed = DashboardQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ code: 'VALIDATION_ERROR', issues: parsed.error.issues, requestId: context.requestId });
+  try {
+    const [metrics, evalRuns] = await Promise.all([
+      persistence.ctoDashboard(context.tenantId, parsed.data.days),
+      persistence.listEvalRuns(context.tenantId, 1)
+    ]);
+    return res.json({
+      requestId: context.requestId,
+      ...metrics,
+      ai: aiRuntimeMetadata(),
+      azure: {
+        region: process.env.AZURE_REGION ?? 'not-reported',
+        runtime: 'Azure Container Apps',
+        stateBackend: persistence.backend === 'postgres' ? 'Azure Database for PostgreSQL + LangGraph checkpoints' : persistence.backend,
+        platformComponents: ['Gateway', 'Orchestrator', 'OPA', 'MCP Server', 'Reference Adapters', 'PostgreSQL', 'Azure OpenAI', 'Log Analytics'],
+        billing: {
+          status: 'NOT_CONNECTED',
+          actualAzureSpendUsd: null,
+          note: 'AI token economics are metered from live model responses. Actual Azure infrastructure spend requires Azure Cost Management billing integration and is intentionally not estimated as invoice data.'
+        }
+      },
+      latestEvaluation: evalRuns[0] ?? null,
+      semantics: {
+        measured: ['runs', 'latency', 'MCP calls', 'agents', 'artifacts', 'policy outcomes', 'model tokens'],
+        estimated: ['AI token cost using configured reference rates'],
+        notAvailable: ['actual Azure invoice spend until Cost Management is connected']
+      }
+    });
+  } catch (error) {
+    log.error({ error, requestId: context.requestId }, 'CTO dashboard aggregation failed');
+    return res.status(503).json({ code: 'DASHBOARD_UNAVAILABLE', requestId: context.requestId });
+  }
+});
+
 app.get('/v1/runs', async (req, res) => {
   const context = securityContext(req);
   if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
@@ -211,7 +255,6 @@ app.post('/v1/scenarios/:scenarioId/stream', async (req, res) => {
   return res.end();
 });
 
-// Backward-compatible payroll endpoint retained for API consumers and regression tests.
 app.post('/v1/employee-summary', async (req, res) => {
   const context = securityContext(req);
   if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
