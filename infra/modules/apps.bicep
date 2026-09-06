@@ -139,7 +139,7 @@ resource mcp 'Microsoft.App/containerApps@2026-01-01' = {
           timeoutSeconds: 5
           failureThreshold: 3
         }]
-        resources: { cpu: json('0.75'), memory: '1Gi' }
+        resources: { cpu: json('0.75'), memory: '1.5Gi' }
       }]
       scale: { minReplicas: 1, maxReplicas: 7 }
     }
