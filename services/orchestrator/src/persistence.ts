@@ -34,7 +34,7 @@ function postgresConnectionString(): string {
   url.username = user;
   url.password = password;
   url.pathname = `/${database}`;
-  url.searchParams.set('sslmode', process.env.POSTGRES_SSL_MODE ?? 'require');
+  url.searchParams.set('sslmode', process.env.POSTGRES_SSL_MODE ?? 'verify-full');
   return url.toString();
 }
 
@@ -82,14 +82,39 @@ export class RuntimePersistence {
       connectionTimeoutMillis: 5_000,
       application_name: 'bcs-one-orchestrator'
     });
-    await pool.query('select 1');
 
+    try {
+      await pool.query('select 1');
+      const readiness = await pool.query<{
+        checkpoint_migrations: string | null;
+        checkpoints: string | null;
+        checkpoint_blobs: string | null;
+        checkpoint_writes: string | null;
+      }>(`
+        select
+          to_regclass('langgraph.checkpoint_migrations')::text as checkpoint_migrations,
+          to_regclass('langgraph.checkpoints')::text as checkpoints,
+          to_regclass('langgraph.checkpoint_blobs')::text as checkpoint_blobs,
+          to_regclass('langgraph.checkpoint_writes')::text as checkpoint_writes
+      `);
+      const row = readiness.rows[0];
+      if (!row || Object.values(row).some(value => !value)) {
+        throw new Error(`LangGraph checkpoint schema is not provisioned: ${JSON.stringify(row ?? {})}. Run the privileged database migration job before starting the orchestrator.`);
+      }
+    } catch (error) {
+      await pool.end();
+      throw error;
+    }
+
+    // Schema/tables are provisioned by the privileged db-migrator. Runtime
+    // startup intentionally performs no DDL and therefore needs no database
+    // CREATE privilege.
     const checkpointer = PostgresSaver.fromConnString(connectionString, { schema: 'langgraph' });
-    await checkpointer.setup();
     return new RuntimePersistence('postgres', checkpointer, pool);
   }
 
   async close(): Promise<void> {
+    if (this.checkpointer instanceof PostgresSaver) await this.checkpointer.end();
     await this.pool?.end();
   }
 
