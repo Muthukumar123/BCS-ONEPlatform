@@ -43,17 +43,16 @@ jobs:
           PROFILE: ${{ inputs.profile }}
         run: |
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          SHARE_DIR="$RUNNER_TEMP/bcs-one-share"
           ARCHIVE="bcs-one-source-${PROFILE}-${SHORT_SHA}.tar.gz"
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/$ARCHIVE" bcs-one-source
-          sha256sum "$RUNNER_TEMP/$ARCHIVE" | tee "$RUNNER_TEMP/$ARCHIVE.sha256"
-          echo "archive=$ARCHIVE" >> "$GITHUB_ENV"
+          mkdir -p "$SHARE_DIR"
+          tar -C "$RUNNER_TEMP" -czf "$SHARE_DIR/$ARCHIVE" bcs-one-source
+          sha256sum "$SHARE_DIR/$ARCHIVE" | tee "$SHARE_DIR/$ARCHIVE.sha256"
 
       - name: Upload source review artifact
         uses: actions/upload-artifact@v4
         with:
           name: bcs-one-source-${{ inputs.profile }}-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/${{ env.archive }}
-            ${{ runner.temp }}/${{ env.archive }}.sha256
+          path: ${{ runner.temp }}/bcs-one-share/
           if-no-files-found: error
           retention-days: 7
