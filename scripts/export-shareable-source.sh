@@ -8,8 +8,8 @@
 #   operating details while retaining the application and architecture code.
 #
 # Usage:
-#   ./scripts/export-shareable-source.sh internal ./out/bcs-one-source
-#   ./scripts/export-shareable-source.sh external-review ./out/bcs-one-source
+#   bash scripts/export-shareable-source.sh internal ./out/bcs-one-source
+#   bash scripts/export-shareable-source.sh external-review ./out/bcs-one-source
 
 set -euo pipefail
 
@@ -36,6 +36,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 COMMIT_SHA="$(git rev-parse HEAD)"
 SHORT_SHA="$(git rev-parse --short=12 HEAD)"
 GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+SECRET_SCAN_FILE="$(mktemp)"
+trap 'rm -f "$SECRET_SCAN_FILE"' EXIT
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -70,15 +72,14 @@ if [[ "$PROFILE" == "external-review" ]]; then
 fi
 
 # Fail fast on credential material that should never be committed. The patterns
-# intentionally target high-confidence secret formats rather than ordinary words
-# such as "password" that legitimately appear in documentation/config schemas.
+# target high-confidence credential formats rather than generic words such as
+# "password" that legitimately appear in schemas and documentation.
 if grep -RIlE \
   --exclude='SOURCE_BUNDLE_MANIFEST.txt' \
-  --exclude='*.md' \
-  -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}' \
-  "$OUTPUT_DIR" >/tmp/bcs-one-secret-scan.txt 2>/dev/null; then
+  -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|sk-[A-Za-z0-9_-]{20,}' \
+  "$OUTPUT_DIR" >"$SECRET_SCAN_FILE" 2>/dev/null; then
   echo "Potential credential material detected; refusing to create a shareable bundle:" >&2
-  cat /tmp/bcs-one-secret-scan.txt >&2
+  cat "$SECRET_SCAN_FILE" >&2
   exit 3
 fi
 
