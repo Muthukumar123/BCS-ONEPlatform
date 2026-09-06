@@ -20,6 +20,15 @@ export type GroundedTextResult = {
   usage: AiUsage;
 };
 
+type ResponseUsageShape = {
+  usage?: {
+    input_tokens?: number;
+    input_tokens_details?: { cached_tokens?: number };
+    output_tokens?: number;
+    output_tokens_details?: { reasoning_tokens?: number };
+  };
+};
+
 function numericEnv(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
@@ -97,11 +106,12 @@ function safeOpenAIError(error: unknown): SafeOpenAIError {
   };
 }
 
-function usageForResponse(response: Awaited<ReturnType<OpenAI['responses']['create']>>, model: string): AiUsage {
-  const inputTokens = response.usage?.input_tokens ?? 0;
-  const cachedInputTokens = response.usage?.input_tokens_details?.cached_tokens ?? 0;
-  const outputTokens = response.usage?.output_tokens ?? 0;
-  const reasoningTokens = response.usage?.output_tokens_details?.reasoning_tokens ?? 0;
+function usageForResponse(response: unknown, model: string): AiUsage {
+  const usage = (response as ResponseUsageShape).usage;
+  const inputTokens = usage?.input_tokens ?? 0;
+  const cachedInputTokens = usage?.input_tokens_details?.cached_tokens ?? 0;
+  const outputTokens = usage?.output_tokens ?? 0;
+  const reasoningTokens = usage?.output_tokens_details?.reasoning_tokens ?? 0;
   const pricing = aiRuntimeMetadata().pricing;
   const nonCachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
   const estimatedCostUsd =
