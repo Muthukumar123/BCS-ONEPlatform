@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "node --check public/app.js && node --check public/self-explaining.js && node --check public/product-ba.js && tsc -p tsconfig.json",
+    "build": "node --check public/app.js && node --check public/self-explaining.js && node --check public/product-ba.js && node --check public/ui-polish.js && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
