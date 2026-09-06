@@ -2,6 +2,22 @@ import { DefaultAzureCredential, getBearerTokenProvider } from '@azure/identity'
 import OpenAI from 'openai';
 import pino from 'pino';
 
+/**
+ * Azure OpenAI integration for BCS ONE.
+ *
+ * Trust boundary:
+ * - This module receives evidence only after identity, policy, MCP execution and
+ *   source attribution have already happened in the workflow.
+ * - The model is allowed to explain/summarize governed evidence; it is not an
+ *   authorization service, payroll calculator or HR system of record.
+ * - Prompts/evidence are deliberately not written to operational logs.
+ *
+ * Cost boundary:
+ * - Token counts come from Azure OpenAI response usage metadata.
+ * - `estimatedCostUsd` is a reference-rate estimate for platform economics and
+ *   must never be represented as actual Azure invoice spend.
+ */
+
 const log = pino({ name: 'azure-openai' });
 let client: OpenAI | undefined;
 
@@ -34,6 +50,11 @@ function numericEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+/**
+ * Returns non-secret AI runtime metadata for dashboards and diagnostics.
+ * Pricing is intentionally configurable so finance-approved rates can replace
+ * the public reference defaults without changing application code.
+ */
 export function aiRuntimeMetadata() {
   return {
     provider: 'Azure OpenAI',
@@ -49,6 +70,12 @@ export function aiRuntimeMetadata() {
   };
 }
 
+/**
+ * Lazily creates one Azure OpenAI client per process.
+ *
+ * Authentication uses the Container App's managed identity. No API key is
+ * stored in source code or injected into browser-facing configuration.
+ */
 export function getAzureOpenAIClient(): OpenAI | undefined {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   if (!endpoint) return undefined;
@@ -86,6 +113,10 @@ type SafeOpenAIError = {
   message?: string;
 };
 
+/**
+ * Reduces SDK exceptions to fields that are useful for operations while
+ * avoiding request bodies, prompts, tokens or employee evidence.
+ */
 function safeOpenAIError(error: unknown): SafeOpenAIError {
   if (!error || typeof error !== 'object') return { name: 'UnknownError' };
   const candidate = error as Record<string, unknown>;
@@ -106,6 +137,7 @@ function safeOpenAIError(error: unknown): SafeOpenAIError {
   };
 }
 
+/** Convert Azure OpenAI usage metadata into the platform's persisted economics shape. */
 function usageForResponse(response: unknown, model: string): AiUsage {
   const usage = (response as ResponseUsageShape).usage;
   const inputTokens = usage?.input_tokens ?? 0;
@@ -121,6 +153,7 @@ function usageForResponse(response: unknown, model: string): AiUsage {
   return { model, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, estimatedCostUsd, attempts: 1 };
 }
 
+/** Add usage across retries so retry economics are not silently hidden. */
 function addUsage(left: AiUsage, right: AiUsage): AiUsage {
   return {
     model: right.model || left.model,
@@ -133,6 +166,14 @@ function addUsage(left: AiUsage, right: AiUsage): AiUsage {
   };
 }
 
+/**
+ * Executes a bounded Responses API call for grounded operational text.
+ *
+ * Reasoning models can consume part of `max_output_tokens` on reasoning before
+ * producing visible text. We therefore allow one larger-budget retry only when
+ * Azure explicitly reports `incomplete/max_output_tokens`. Other failures are
+ * surfaced rather than silently degrading the evidence contract.
+ */
 async function createGroundedText(args: {
   input: string;
   initialMaxOutputTokens: number;
@@ -219,6 +260,10 @@ async function createGroundedText(args: {
   return undefined;
 }
 
+/**
+ * Employee-facing payroll explanation. The prompt explicitly prevents the
+ * model from recalculating or correcting payroll facts supplied by the source.
+ */
 export async function explainGroundedFacts(facts: unknown): Promise<GroundedTextResult | undefined> {
   const input = [
     'You are the BCS ONE payroll explanation agent.',
@@ -239,6 +284,11 @@ export async function explainGroundedFacts(facts: unknown): Promise<GroundedText
   });
 }
 
+/**
+ * Cross-product synthesis for scenarios such as Employee 360. Provenance is
+ * preserved in the evidence array so the model can reference products without
+ * collapsing multiple systems of record into an invented single source.
+ */
 export async function synthesizeGroundedArtifacts(input: {
   scenarioTitle: string;
   businessQuestion: string;
