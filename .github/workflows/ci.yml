@@ -22,6 +22,15 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+      # The source-sharing path is part of the product's reviewability/security
+      # posture. Validate both shell syntax and a real external-review export.
+      - name: Validate source export script
+        shell: bash
+        run: |
+          bash -n scripts/export-shareable-source.sh
+          bash scripts/export-shareable-source.sh external-review "$RUNNER_TEMP/bcs-one-source-smoke"
+          test -f "$RUNNER_TEMP/bcs-one-source-smoke/SOURCE_BUNDLE_MANIFEST.txt"
+          test -f "$RUNNER_TEMP/bcs-one-source-smoke/SOURCE_BUNDLE_FILES.txt"
 
   bicep:
     runs-on: ubuntu-latest

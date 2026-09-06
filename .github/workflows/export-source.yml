@@ -1,0 +1,58 @@
+name: Export shareable source
+
+# Manual-only workflow. Source export should be an explicit reviewer action, not
+# something automatically published on every commit.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Source sharing profile
+        required: true
+        default: external-review
+        type: choice
+        options:
+          - external-review
+          - internal
+
+# Read-only repository permission is sufficient. The workflow never changes the
+# repository and has no need for Azure/GitHub secrets.
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Build ${{ inputs.profile }} source bundle
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out selected commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build controlled source tree
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          chmod +x scripts/export-shareable-source.sh
+          scripts/export-shareable-source.sh "$PROFILE" "$RUNNER_TEMP/bcs-one-source"
+
+      - name: Create compressed review package
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          SHARE_DIR="$RUNNER_TEMP/bcs-one-share"
+          ARCHIVE="bcs-one-source-${PROFILE}-${SHORT_SHA}.tar.gz"
+          mkdir -p "$SHARE_DIR"
+          tar -C "$RUNNER_TEMP" -czf "$SHARE_DIR/$ARCHIVE" bcs-one-source
+          sha256sum "$SHARE_DIR/$ARCHIVE" | tee "$SHARE_DIR/$ARCHIVE.sha256"
+
+      - name: Upload source review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcs-one-source-${{ inputs.profile }}-${{ github.sha }}
+          path: ${{ runner.temp }}/bcs-one-share/
+          if-no-files-found: error
+          retention-days: 7
