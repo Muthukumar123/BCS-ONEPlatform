@@ -1,6 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { Client } from 'pg';
 
 function required(name: string): string {
@@ -21,6 +22,19 @@ if (runtimeUser !== 'bcsone_runtime') {
   throw new Error('This migration currently requires POSTGRES_RUNTIME_USER=bcsone_runtime so grants remain deterministic.');
 }
 
+function postgresConnectionString(user: string, password: string): string {
+  const url = new URL('postgresql://placeholder');
+  url.hostname = host;
+  url.port = String(port);
+  url.username = user;
+  url.password = password;
+  url.pathname = `/${database}`;
+  // Make the current node-postgres TLS behavior explicit instead of relying on
+  // the deprecated sslmode=require alias semantics.
+  url.searchParams.set('sslmode', 'verify-full');
+  return url.toString();
+}
+
 const client = new Client({
   host,
   port,
@@ -31,6 +45,47 @@ const client = new Client({
   application_name: 'bcs-one-db-migrator',
   connectionTimeoutMillis: 10_000
 });
+
+async function bootstrapLangGraphCheckpointSchema() {
+  console.log('Bootstrapping LangGraph checkpoint schema with privileged migration identity');
+  const checkpointer = PostgresSaver.fromConnString(
+    postgresConnectionString(adminUser, adminPassword),
+    { schema: 'langgraph' }
+  );
+  try {
+    await checkpointer.setup();
+  } finally {
+    await checkpointer.end();
+  }
+
+  // Runtime workloads receive data-plane access only. DDL remains a deployment
+  // responsibility so application startup never requires CREATE on the database.
+  console.log('Applying least-privilege runtime grants to LangGraph checkpoint objects');
+  await client.query(`
+    grant usage on schema langgraph to bcsone_runtime;
+    grant select, insert, update, delete on all tables in schema langgraph to bcsone_runtime;
+    grant usage, select, update on all sequences in schema langgraph to bcsone_runtime;
+    revoke create on schema langgraph from bcsone_runtime;
+  `);
+
+  const readiness = await client.query<{
+    checkpoint_migrations: string | null;
+    checkpoints: string | null;
+    checkpoint_blobs: string | null;
+    checkpoint_writes: string | null;
+  }>(`
+    select
+      to_regclass('langgraph.checkpoint_migrations')::text as checkpoint_migrations,
+      to_regclass('langgraph.checkpoints')::text as checkpoints,
+      to_regclass('langgraph.checkpoint_blobs')::text as checkpoint_blobs,
+      to_regclass('langgraph.checkpoint_writes')::text as checkpoint_writes
+  `);
+  const row = readiness.rows[0];
+  if (!row || Object.values(row).some(value => !value)) {
+    throw new Error(`LangGraph checkpoint bootstrap incomplete: ${JSON.stringify(row ?? {})}`);
+  }
+  console.log('LangGraph checkpoint schema is ready');
+}
 
 async function main() {
   console.log(`Connecting to PostgreSQL ${host}:${port}/${database} as ${adminUser}`);
@@ -70,8 +125,10 @@ async function main() {
       await client.query(migrationSql);
     }
 
+    await bootstrapLangGraphCheckpointSchema();
+
     const result = await client.query(`select version, applied_at from bcs_state.schema_migrations order by applied_at, version`);
-    console.log(JSON.stringify({ status: 'ok', migrations: result.rows }, null, 2));
+    console.log(JSON.stringify({ status: 'ok', migrations: result.rows, langGraphCheckpointSchema: 'ready' }, null, 2));
   } finally {
     await client.end();
   }
