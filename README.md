@@ -159,7 +159,7 @@ The workflow creates a short-lived artifact with a commit manifest and SHA-256 c
 Local equivalent:
 
 ```bash
-./scripts/export-shareable-source.sh external-review ./out/bcs-one-source
+bash scripts/export-shareable-source.sh external-review ./out/bcs-one-source
 ```
 
 ## Azure deployment
