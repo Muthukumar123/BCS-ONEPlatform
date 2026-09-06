@@ -22,6 +22,8 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Validate Console accessibility architecture
+        run: node scripts/check-console-accessibility.mjs
       # The source-sharing path is part of the product's reviewability/security
       # posture. Validate both shell syntax and a real external-review export.
       - name: Validate source export script
