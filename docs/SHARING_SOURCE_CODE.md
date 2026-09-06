@@ -29,7 +29,7 @@ Two profiles are available:
 | `internal` | approved internal technical reviewer | all tracked repository source at the selected commit |
 | `external-review` | approved third-party / leadership technical review | application/service/policy/docs and generic infrastructure code, with environment-specific and repository-automation material removed |
 
-The artifact contains a `SOURCE_BUNDLE_MANIFEST.txt` file with the commit SHA, profile and generation time so the recipient can identify exactly what was reviewed.
+The exported source tree contains a `SOURCE_BUNDLE_MANIFEST.txt` file with the commit SHA, profile and generation time so the recipient can identify exactly what was reviewed.
 
 ## How to create the bundle
 
@@ -37,23 +37,24 @@ The artifact contains a `SOURCE_BUNDLE_MANIFEST.txt` file with the commit SHA, p
 2. Select **Run workflow**.
 3. Choose `internal` or `external-review`.
 4. Run from the branch/commit you intend to share.
-5. Download the generated `bcs-one-source-<profile>-<short-sha>` artifact.
-6. Review the manifest and sample the archive before forwarding it.
+5. Download the generated `bcs-one-source-<profile>-<commit-sha>` workflow artifact.
+6. Inside the artifact, use the `bcs-one-source-<profile>-<short-sha>.tar.gz` archive and its matching `.sha256` file.
+7. Review the manifest and sample the archive before forwarding it.
 
 The workflow artifact is intentionally short-lived. Re-run the workflow when a newer reviewed version is required rather than maintaining manually copied ZIP files.
 
 ## Local export
 
-The same packaging logic can be run locally:
+The same packaging logic can be run locally without relying on executable-file permissions:
 
 ```bash
-./scripts/export-shareable-source.sh external-review ./out/bcs-one-source
+bash scripts/export-shareable-source.sh external-review ./out/bcs-one-source
 ```
 
 or:
 
 ```bash
-./scripts/export-shareable-source.sh internal ./out/bcs-one-source
+bash scripts/export-shareable-source.sh internal ./out/bcs-one-source
 ```
 
 The script only packages files already tracked in Git. Local untracked `.env`, credential files and build output are therefore not copied.
@@ -69,6 +70,12 @@ The external-review profile removes material that is not needed to understand th
 - package-manager/cache/build output if present.
 
 It keeps generic Bicep modules so reviewers can still understand the Azure architecture.
+
+## Automated credential scan
+
+Before producing the bundle, the export script scans the complete exported tree for several high-confidence credential formats such as private keys, GitHub tokens, AWS access-key identifiers, Slack tokens and OpenAI-style secret keys. If one is detected, the export fails instead of creating a shareable artifact.
+
+This is a defensive control, not a replacement for human review.
 
 ## Required human review before distribution
 
