@@ -10,11 +10,29 @@ import { RuntimePersistence } from './persistence.js';
 import { searchSyntheticWorkforce, syntheticEmployeeById, workforceOverview } from './synthetic-workforce.js';
 import type { SecurityContext } from './runtime-types.js';
 
+/**
+ * BCS ONE internal orchestrator API.
+ *
+ * This service is deployed behind internal Container Apps ingress. The external
+ * gateway authenticates Entra tokens and creates the trusted `x-bcs-*` context
+ * consumed here. The orchestrator then owns request validation, LangGraph
+ * execution, tenant-scoped persistence queries and runtime/dashboard APIs.
+ *
+ * Important separation of concerns:
+ * - Gateway: identity trust boundary.
+ * - OPA: deterministic authorization decisions.
+ * - Orchestrator: workflow ordering and evidence assembly.
+ * - MCP/adapters: product capability execution.
+ * - Azure OpenAI: downstream grounded synthesis only.
+ */
+
 const app = express();
 const log = pino({ name: 'orchestrator' });
 const port = Number(process.env.PORT ?? 3001);
 const persistence = await RuntimePersistence.create();
 
+// API validation is deliberately stricter than the synthetic data generators so
+// malformed periods/IDs fail before policy, MCP or model calls consume resources.
 const PeriodSchema = z.string().regex(
   /^\d{4}-(0[1-9]|1[0-2])$/,
   'period must use YYYY-MM with a calendar month from 01 through 12'
@@ -54,6 +72,13 @@ app.get('/healthz', (_req, res) => res.json({
   scenarioCount: scenarios.length
 }));
 
+/**
+ * Reconstruct the internal security context created by the authenticated gateway.
+ *
+ * Do not call this service directly from an untrusted public edge in production;
+ * these headers are trusted because network topology and the gateway establish
+ * the boundary, not because HTTP header names are intrinsically trustworthy.
+ */
 function securityContext(req: express.Request): SecurityContext | undefined {
   const tenantId = req.header('x-bcs-tenant-id');
   const userId = req.header('x-bcs-user-id');
@@ -64,6 +89,7 @@ function securityContext(req: express.Request): SecurityContext | undefined {
   return { tenantId, userId, roles, purpose, requestId };
 }
 
+/** Workforce/dashboard browsing is intentionally restricted to HR/payroll roles. */
 function canBrowseWorkforce(context: SecurityContext): boolean {
   return context.roles.includes('hr') || context.roles.includes('payroll');
 }
@@ -79,6 +105,8 @@ function parseScenarioRequest(body: unknown) {
   if (!parsed.success) return { ok: false as const, issues: parsed.error.issues };
   return { ok: true as const, data: parsed.data };
 }
+
+// ----------------------------- Platform discovery -----------------------------
 
 app.get('/v1/mcp/tools', async (req, res) => {
   const context = securityContext(req);
@@ -106,6 +134,11 @@ app.get('/v1/scenarios', (req, res) => {
     }
   });
 });
+
+// -------------------------- Synthetic workforce APIs --------------------------
+// These endpoints support the enterprise UX without pretending that customer
+// records are present. The selected employee ID is still passed through the real
+// governed scenario path and therefore changes actual MCP/source evidence.
 
 app.get('/v1/workforce/overview', (req, res) => {
   const context = securityContext(req);
@@ -138,6 +171,8 @@ app.get('/v1/workforce/employees/:employeeId', (req, res) => {
   return res.json({ requestId: context.requestId, employee });
 });
 
+// ----------------------------- Executive metrics ------------------------------
+
 app.get('/v1/dashboard/cto', async (req, res) => {
   const context = securityContext(req);
   if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
@@ -165,6 +200,8 @@ app.get('/v1/dashboard/cto', async (req, res) => {
         }
       },
       latestEvaluation: evalRuns[0] ?? null,
+      // Keep measured, estimated and unavailable data explicit so the UI cannot
+      // accidentally present token estimates as Azure Cost Management invoices.
       semantics: {
         measured: ['runs', 'latency', 'MCP calls', 'agents', 'artifacts', 'policy outcomes', 'model tokens'],
         estimated: ['AI token cost using configured reference rates'],
@@ -176,6 +213,8 @@ app.get('/v1/dashboard/cto', async (req, res) => {
     return res.status(503).json({ code: 'DASHBOARD_UNAVAILABLE', requestId: context.requestId });
   }
 });
+
+// ------------------------ Durable runs and evidence APIs -----------------------
 
 app.get('/v1/runs', async (req, res) => {
   const context = securityContext(req);
@@ -210,6 +249,8 @@ app.get('/v1/evaluations', async (req, res) => {
   const runs = await persistence.listEvalRuns(context.tenantId, 20);
   return res.json({ requestId: context.requestId, runs });
 });
+
+// ----------------------------- Scenario execution -----------------------------
 
 app.post('/v1/scenarios/:scenarioId', async (req, res) => {
   const context = securityContext(req);
@@ -255,6 +296,7 @@ app.post('/v1/scenarios/:scenarioId/stream', async (req, res) => {
   return res.end();
 });
 
+// Backward-compatible payroll endpoint retained for API consumers and regression tests.
 app.post('/v1/employee-summary', async (req, res) => {
   const context = securityContext(req);
   if (!context) return res.status(400).json({ code: 'MISSING_SECURITY_CONTEXT' });
@@ -297,6 +339,7 @@ app.post('/v1/employee-summary/stream', async (req, res) => {
 
 const server = app.listen(port, () => log.info({ port, stateBackend: persistence.backend, scenarios: scenarios.length }, 'orchestrator listening'));
 
+/** Close durable resources cleanly so Postgres/LangGraph state is not abandoned. */
 async function shutdown(signal: string) {
   log.info({ signal }, 'orchestrator shutting down');
   server.close();
