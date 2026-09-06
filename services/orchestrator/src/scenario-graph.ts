@@ -256,12 +256,12 @@ export async function executeScenarioGraph(args: {
       inputKeys: evidence.map(item => item.capability),
       message: 'Azure OpenAI receives only governed structured evidence from completed MCP calls.'
     });
-    const synthesis = await synthesizeGroundedArtifacts({
+    const synthesisResult = await synthesizeGroundedArtifacts({
       scenarioTitle: scenario.title,
       businessQuestion: scenario.businessQuestion,
       artifacts: evidence.map(item => ({ capability: item.capability, product: item.product, sourceSystem: item.sourceSystem, data: item.data }))
     });
-    if (!synthesis) throw new Error('MODEL_RETURNED_NO_SYNTHESIS');
+    if (!synthesisResult) throw new Error('MODEL_RETURNED_NO_SYNTHESIS');
 
     const synthesisArtifactId = await persistence.putArtifact({
       runId,
@@ -271,13 +271,23 @@ export async function executeScenarioGraph(args: {
       artifactType: 'grounded_cross_product_synthesis',
       classification: 'confidential',
       capability: 'ai.cross_product_synthesis',
-      payload: { text: synthesis, groundedOnArtifactIds: evidence.map(item => item.artifactId) }
+      payload: {
+        text: synthesisResult.text,
+        groundedOnArtifactIds: evidence.map(item => item.artifactId),
+        usage: synthesisResult.usage
+      }
     });
     await emit('ai', 'model.synthesis.completed', 'completed', {
       agent: 'synthesis-agent', nodeId: 'ai:synthesis', parentNodeId: 'merge:evidence', lane: 'ai',
       artifactId: synthesisArtifactId, durationMs: Date.now() - aiStarted,
       outputShape: ['grounded_briefing'],
-      message: 'LLM synthesis persisted separately from authoritative source artifacts.'
+      aiModel: synthesisResult.usage.model,
+      inputTokens: synthesisResult.usage.inputTokens,
+      cachedInputTokens: synthesisResult.usage.cachedInputTokens,
+      outputTokens: synthesisResult.usage.outputTokens,
+      reasoningTokens: synthesisResult.usage.reasoningTokens,
+      estimatedAiCostUsd: synthesisResult.usage.estimatedCostUsd,
+      message: 'LLM synthesis persisted separately from authoritative source artifacts; token usage is metered for operational economics.'
     });
     return { synthesisArtifactId };
   };
